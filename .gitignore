@@ -24,12 +24,14 @@ dist/
 *.egg-info/
 *.manifest
 #! Allow PyInstaller spec to track build config
-# *.spec (uncomment to ignore)
+*.spec
 *.pkg
 *.toc
 warn-*.txt
 xref-*.html
 localpycs/
+build_exe.ps1
+README_BUILD.md
 
 #############################
 # Playwright downloaded browsers (can be re-fetched)

@@ -1,76 +1,52 @@
-# Moodle Course Downloader (GUI)
+# Moodle Course Downloader
 
-Python GUI tool to authenticate to a Moodle instance and download course content (files, zips, etc.), with optional extraction and structured storage.
+This tool helps you download all the content from your Moodle courses with a simple graphical interface. It logs into your Moodle account, finds your courses, and downloads all the files, folders, and other resources for you.
 
 ## Features
 
-- GUI front-end (`moodledown_gui.py`) for user-friendly operation
-- Automated login & navigation via Playwright
-- Download manager with retry logic
-- Content extraction / unzip support
-- Structured data utilities (`data_structures.py`)
-- Packaged executable build via PyInstaller (`build_exe.ps1` + `.spec` file)
+- **Easy to use**: A simple GUI to get you started quickly.
+- **Automated Downloads**: Logs in and downloads content from all your courses automatically.
+- **Organized Files**: Saves all downloaded content in a structured way on your computer.
+- **Handles Zip Files**: Automatically extracts zipped folders that you download.
 
-## Quick Start (Developer Mode)
+## How to Get Started
 
-1. Create & activate a virtual environment (recommended):
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
-2. Install dependencies:
-   ```powershell
-   pip install -r requirements.txt
-   ```
-3. (If Playwright browsers not yet installed) install them:
-   ```powershell
-   python -m playwright install
-   ```
-4. Run the GUI:
-   ```powershell
-   python moodledown_gui.py
-   ```
+1.  **Set up your environment**:
+    It's a good idea to use a virtual environment to keep things tidy.
 
-## Building a Standalone EXE
+    ```powershell
+    python -m venv .venv
+    .\.venv\Scripts\Activate.ps1
+    ```
 
-The repo includes a PyInstaller spec and helper script.
+2.  **Install what's needed**:
+    This will install all the Python packages the tool needs to run.
 
-```powershell
-pwsh ./build_exe.ps1
-```
+    ```powershell
+    pip install -r requirements.txt
+    ```
 
-Artifacts are created under `dist/` (ignored by git). The script may also generate a `build/` working directory.
+3.  **Install the web drivers**:
+    The tool uses Playwright to control a web browser. This command will download the necessary browser files.
 
-## Repository Layout (Key Files)
+    ```powershell
+    python -m playwright install
+    ```
 
-| File | Purpose |
-|------|---------|
-| `moodledown_gui.py` | Main GUI entry point |
-| `main.py` | Possibly CLI / core startup (if applicable) |
-| `moodle_browser.py` | Playwright browser automation helpers |
-| `download_handler.py` | Handles file download logic |
-| `content_extractor.py` | Extraction / unzip logic |
-| `file_operations.py` | Filesystem utilities |
-| `data_structures.py` | Data containers / models |
-| `unzipper.py` | Additional unzip utilities |
-| `moodledown_gui.spec` | PyInstaller build spec |
-| `build_exe.ps1` | PowerShell build script |
-| `requirements.txt` | Python dependencies |
-| `README_BUILD.md` | Extra build details (advanced) |
+4.  **Run the app**:
+    You're all set! Start the application with this command.
+    ```powershell
+    python moodledown_gui.py
+    ```
 
-## Notes
+## Future Ideas
 
-- The `browsers/` directory (Playwright downloads) is ignored; Playwright will re-download as needed.
-- Avoid committing large binary artifacts; reproducible builds keep the repo lean.
-- Adjust `.gitignore` if you decide to vendor specific runtime binaries.
+Here are some things that could be added in the future:
 
-## Next Steps / Ideas
-
-- Add automated tests
-- CI workflow (GitHub Actions) for linting & packaging
-- Configurable output directory in GUI
-- Logging panel inside the GUI
+- Automated tests to make sure everything works as expected.
+- A way to choose where to save the downloaded files from the app.
+- A log window inside the app to see what's happening.
 
 ## License
 
-Add a LICENSE file (MIT / Apache-2.0 / etc.) if you plan to share publicly.
+This project isn't licensed yet. If you plan to share it, it's a good idea to add a license file (like MIT or Apache-2.0).
