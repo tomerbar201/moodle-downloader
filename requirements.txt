@@ -1,0 +1,9 @@
+# requirements.txt
+PyQt5~=5.15.11
+playwright~=1.51.0
+beautifulsoup4~=4.13.3
+lxml
+bs4~=0.0.2
+PySimpleGUI~=5.0.8.3
+
+keyring
