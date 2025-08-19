@@ -45,8 +45,4 @@ Here are some things that could be added in the future:
 
 - Automated tests to make sure everything works as expected.
 - A way to choose where to save the downloaded files from the app.
-- A log window inside the app to see what's happening.
-
-## License
-
-This project isn't licensed yet. If you plan to share it, it's a good idea to add a license file (like MIT or Apache-2.0).
+- A complete redesing for a UI that will interact with the course page as you go.
