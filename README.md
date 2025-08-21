@@ -98,6 +98,6 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Contact
 
-Tomer Bar - tomerbar2021@gmail.com
+Tomer Bar - tomerbar201@gmail.com
 
 Project Link: [https://github.com/tomerbar2021/moodle-downloader](https://github.com/tomerbar2021/moodle-downloader)
