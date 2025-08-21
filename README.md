@@ -1,48 +1,103 @@
-# Moodle Course Downloader
+# Moodle Downloader
 
-This tool helps you download all the content from your Moodle courses with a simple graphical interface. It logs into your Moodle account, finds your courses, and downloads all the files, folders, and other resources for you.
+A Python application for automating the download of course materials from Moodle. Features both a graphical interface and command-line interface for downloading files from enrolled courses.
 
 ## Features
 
-- **Easy to use**: A simple GUI to get you started quickly.
-- **Automated Downloads**: Logs in and downloads content from all your courses automatically.
-- **Organized Files**: Saves all downloaded content in a structured way on your computer.
-- **Handles Zip Files**: Automatically extracts zipped folders that you download.
+- **Automated Login**: Secure authentication with Moodle
+- **Course Detection**: Lists all enrolled courses  
+- **Batch Downloads**: Downloads all course files with folder structure preservation
+- **Archive Extraction**: Automatically extracts ZIP files
+- **GUI Interface**: User-friendly PyQt5 interface
+- **Progress Tracking**: Real-time download progress and status updates
+- **Cross-Platform**: Works on Windows, macOS, and Linux
 
-## How to Get Started
+## Technology Stack
 
-1.  **Set up your environment**:
-    It's a good idea to use a virtual environment to keep things tidy.
+- **Python 3.x**: Core language
+- **PyQt5**: GUI framework
+- **Playwright**: Browser automation
+- **BeautifulSoup4**: HTML parsing
+- **Keyring**: Secure credential storage
 
-    ```powershell
-    python -m venv .venv
-    .\.venv\Scripts\Activate.ps1
-    ```
+## Prerequisites
 
-2.  **Install what's needed**:
-    This will install all the Python packages the tool needs to run.
+- Python 3.8 or higher
+- Modern web browser (Chrome, Firefox, or Edge)
 
-    ```powershell
-    pip install -r requirements.txt
-    ```
+## Installation
 
-3.  **Install the web drivers**:
-    The tool uses Playwright to control a web browser. This command will download the necessary browser files.
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/tomerbar201/moodle-downloader.git
+   cd moodle-downloader
+   ```
 
-    ```powershell
-    python -m playwright install
-    ```
+2. **Create and activate virtual environment:**
+   ```bash
+   python -m venv venv
+   
+   # On Windows:
+   venv\Scripts\activate
+   
+   # On macOS/Linux:
+   source venv/bin/activate
+   ```
 
-4.  **Run the app**:
-    You're all set! Start the application with this command.
-    ```powershell
-    python moodledown_gui.py
-    ```
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   playwright install
+   ```
 
-## Future Ideas
+## Usage
 
-Here are some things that could be added in the future:
+### GUI Mode (Recommended)
+```bash
+python moodledown_gui.py
+```
 
-- Automated tests to make sure everything works as expected.
-- A way to choose where to save the downloaded files from the app.
-- A complete redesing for a UI that will interact with the course page as you go.
+### Command Line Mode
+```bash
+python main.py
+```
+
+Follow the prompts to enter your Moodle credentials and select courses to download.
+
+## Project Structure
+
+```
+├── main.py                 # Command-line interface
+├── moodledown_gui.py      # GUI application  
+├── moodle_browser.py      # Browser automation
+├── content_extractor.py   # HTML parsing
+├── download_handler.py    # File download management
+├── file_operations.py     # File utilities
+├── data_structures.py     # Data classes
+├── unzipper.py           # Archive extraction
+└── requirements.txt      # Dependencies
+```
+
+## Usage
+
+To run the application, execute the `moodledown_gui.py` file:
+
+```bash
+python moodledown_gui.py
+```
+
+Upon launching, you will be prompted to enter your Moodle username and password. The application will then log in, fetch your courses, and display them. You can then select the courses you want to download files from and choose a destination folder.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+## Contact
+
+Tomer Bar - tomerbar2021@gmail.com
+
+Project Link: [https://github.com/tomerbar2021/moodle-downloader](https://github.com/tomerbar2021/moodle-downloader)

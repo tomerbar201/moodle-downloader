@@ -1,3 +1,9 @@
+"""
+GUI interface for Moodle Downloader using PyQt5.
+Handles user authentication, course selection, and download management.
+
+"""
+
 import sys
 import threading
 import os
@@ -33,33 +39,25 @@ except ImportError as e:
 try:
     import keyring
     KEYRING_AVAILABLE = True
-    print("Successfully imported 'keyring' module for secure password storage.")
 except ImportError:
-    print("Warning: 'keyring' module not found. Secure password storage will be disabled. Install with: pip install keyring")
     keyring = None
     KEYRING_AVAILABLE = False
 
 # --- Unzipper Module Import ---
 try:
-    # Import the refined unzipper module
     import unzipper
     UNZIPPER_AVAILABLE: bool = True
-    print("Successfully imported 'unzipper' module.")
 except ImportError:
-    print("Warning: 'unzipper' module not found. Manual extraction feature will be disabled.")
-    unzipper = None  # Keep variable defined, but None
+    unzipper = None
     UNZIPPER_AVAILABLE = False
 
 # --- Helper function to extract course ID ---
 def extract_course_id_from_url(url: str) -> Optional[str]:
-    """Extracts the Moodle course ID from a URL using regex."""
+    """Extract Moodle course ID from URL."""
     if not url:
         return None
-    # Look for id= followed by digits
     match = re.search(r'[?&]id=(\d+)', url)
-    if match:
-        return match.group(1)
-    return None
+    return match.group(1) if match else None
 
 # --- Initial Default Courses (Updated to use full URLs) ---
 COURSES: Dict[str, str] = {
@@ -69,12 +67,36 @@ COURSES: Dict[str, str] = {
 
 # --- Worker Threads ---
 class WorkerSignals(QObject):
+    """
+    Defines the signals available from a running worker thread.
+
+    Supported signals are:
+    - status: Emits a string to update the status message.
+    - progress: Emits a float (0-100) to update the progress bar.
+    - finished: Emits a boolean (success) and a string (message) when the
+                task is complete.
+    """
     status = pyqtSignal(str)
     progress = pyqtSignal(float)
     finished = pyqtSignal(bool, str)  # success, message
 
 # --- Download Workers ---
 class _BaseDownloadWorker(threading.Thread):
+    """
+    A base class for download worker threads, containing common functionality.
+
+    This class handles the basic setup for a download thread, including
+    initializing signals, reading settings, and providing a common method for
+    running a single course download.
+
+    Attributes:
+        username (str): The Moodle username.
+        password (str): The Moodle password.
+        download_folder (str): The target directory for downloads.
+        settings (QSettings): Application settings object.
+        signals (WorkerSignals): Signals object for communicating with the GUI.
+        browser (Optional[MoodleBrowser]): A shared browser instance.
+    """
     def __init__(self, username: str, password: str, download_folder: str, settings: Optional[QSettings] = None) -> None:
         super().__init__(daemon=True)
         self.username: str = username
@@ -92,6 +114,7 @@ class _BaseDownloadWorker(threading.Thread):
         self.browser: Optional[MoodleBrowser] = None
     
     def _run_single_download(self, course_url: str, course_name: str, progress_callback: Callable[[str, float], None], shared_browser=None) -> bool:
+        """Executes the download logic for a single course."""
         course_id = extract_course_id_from_url(course_url)
         if not course_id:
             progress_callback(f"Invalid URL for {course_name}, skipping.", 0)
@@ -116,12 +139,27 @@ class _BaseDownloadWorker(threading.Thread):
 
 
 class DownloadWorker(_BaseDownloadWorker):
+    """
+    A worker thread for downloading a single course.
+    """
     def __init__(self, course_url: str, course_name: str, username: str, password: str, download_folder: str, settings: Optional[QSettings] = None) -> None:
+        """
+        Initializes the single-course download worker.
+
+        Args:
+            course_url (str): The URL of the course to download.
+            course_name (str): The name of the course.
+            username (str): The Moodle username.
+            password (str): The Moodle password.
+            download_folder (str): The target directory for downloads.
+            settings (Optional[QSettings]): Application settings object.
+        """
         super().__init__(username, password, download_folder, settings)
         self.course_url: str = course_url
         self.course_name: str = course_name
 
     def run(self) -> None:
+        """The main entry point for the thread's execution."""
         try:
             def progress_callback(message: str, percent: float) -> None:
                 self.signals.status.emit(f"{self.course_name}: {message}")
@@ -135,11 +173,34 @@ class DownloadWorker(_BaseDownloadWorker):
 
 
 class BatchDownloadWorker(_BaseDownloadWorker):
+    """
+    A worker thread for downloading multiple courses in a single batch.
+
+    This worker manages a single browser session to log in once and then
+    iterates through the selected courses, downloading them sequentially.
+    """
     def __init__(self, courses: List[Tuple[str, str]], username: str, password: str, download_folder: str, settings: Optional[QSettings] = None) -> None:
+        """
+        Initializes the batch download worker.
+
+        Args:
+            courses (List[Tuple[str, str]]): A list of (course_url, course_name)
+                                             tuples to download.
+            username (str): The Moodle username.
+            password (str): The Moodle password.
+            download_folder (str): The target directory for downloads.
+            settings (Optional[QSettings]): Application settings object.
+        """
         super().__init__(username, password, download_folder, settings)
         self.courses: List[Tuple[str, str]] = courses  # List of (course_url, course_name) tuples
 
     def run(self) -> None:
+        """
+        The main entry point for the thread's execution.
+
+        It logs in once, then iterates through the courses, providing progress
+        updates for the entire batch.
+        """
         total_courses: int = len(self.courses)
         successful_courses: int = 0
         
@@ -195,7 +256,14 @@ class BatchDownloadWorker(_BaseDownloadWorker):
 
 # --- Dialogs ---
 class AddCourseDialog(QDialog):
+    """
+    A dialog window for adding a new course to the list.
+
+    It provides input fields for the course name and URL and includes validation
+    to ensure the inputs are valid before closing.
+    """
     def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initializes the dialog."""
         super().__init__(parent)
         self.setWindowTitle("Add Course")
         layout = QFormLayout(self)
@@ -210,6 +278,9 @@ class AddCourseDialog(QDialog):
         layout.addRow(button_box)  # type: ignore
 
     def accept(self):
+        """
+        Overrides the default accept behavior to add validation.
+        """
         name = self.course_name.text().strip()
         url = self.course_url_input.text().strip()
         if not name or not url:
@@ -221,18 +292,30 @@ class AddCourseDialog(QDialog):
         super().accept()
 
     def get_course_data(self) -> Tuple[str, str]:
+        """
+        Returns the entered course name and URL.
+
+        Returns:
+            Tuple[str, str]: The course name and URL.
+        """
         return self.course_name.text().strip(), self.course_url_input.text().strip()
 
 # --- Main Application Window ---
 class MoodleDownloaderApp(QMainWindow):
+    """
+    The main application window for the Moodle Downloader.
+
+    This class sets up the entire GUI, manages user interactions, handles
+    application state and settings, and launches worker threads for downloads.
+    """
     def __init__(self) -> None:
+        """Initializes the main application window."""
         super().__init__()
         print("Initializing MoodleDown GUI...")
         self.setWindowTitle("MoodleDown - Playwright Edition")
         print("Setting up main window...")
         self.resize(750, 600)
         self.settings: QSettings = QSettings("MoodleDown", "MoodleDownApp")
-        print("Loading settings...")
         self.apply_dark_theme()
         self.selected_courses: Set[str] = set()
         self.all_courses: Dict[str, str] = {}
@@ -241,9 +324,11 @@ class MoodleDownloaderApp(QMainWindow):
         self.load_credentials()
         self.load_courses()
         self.restore_geometry_settings()
-        print("UI setup complete.")
     
     def setup_ui(self):
+        """
+        Initializes and arranges all the UI widgets in the main window.
+        """
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
@@ -393,7 +478,7 @@ class MoodleDownloaderApp(QMainWindow):
         self.statusBar.showMessage("Ready")
 
     def apply_dark_theme(self) -> None:
-        # Dark theme styling
+        """Applies a custom dark theme stylesheet to the application."""
         self.setStyleSheet("""
             QWidget { background-color: #212121; color: #f5f5f5; font-size: 9pt; }
             QLineEdit, QListWidget { background-color: #424242; border: 1px solid #616161; padding: 4px; border-radius: 3px; color: #f5f5f5; }
@@ -428,7 +513,10 @@ class MoodleDownloaderApp(QMainWindow):
         """)
 
     def load_credentials(self) -> None:
-        """Loads username from settings and password from keyring if enabled."""
+        """
+        Loads the username from settings and the password from the system
+        keyring if the 'Save password' option is enabled.
+        """
         # Username is already loaded in setup_ui from settings
         username = self.username_input.text()
 
@@ -438,12 +526,15 @@ class MoodleDownloaderApp(QMainWindow):
                 password = keyring.get_password("MoodleDownApp", username)
                 if password:
                     self.password_input.setText(password)
-                    print("Loaded password from system keychain.")
             except Exception as e:
-                print(f"Warning: Could not retrieve password from keyring: {e}")
+                pass  # Silently handle keyring errors
                 self.statusBar.showMessage("Could not retrieve saved password.")
 
     def load_courses(self) -> None:
+        """
+        Loads the list of courses from the application settings and populates
+        the course list widget.
+        """
         try:
             saved_data: Any = self.settings.value("courses", [])
             # Use dict comprehension for loading, handling potential errors
@@ -468,12 +559,20 @@ class MoodleDownloaderApp(QMainWindow):
             self.load_courses()  # Attempt to reload UI with defaults
 
     def filter_courses(self) -> None:
+        """
+        Filters the visible items in the course list based on the text in the
+        search input field.
+        """
         search_term: str = self.search_input.text().lower().strip()
         for i in range(self.course_list.count()):
             item = self.course_list.item(i)
             item.setHidden(search_term not in item.text().lower())
 
     def update_selection(self) -> None:
+        """
+        Updates the set of selected courses and enables/disables UI elements
+        like the 'Download' and 'Remove' buttons based on the selection.
+        """
         self.selected_courses = {item.text().split(" [ID: ")[0] for item in self.course_list.selectedItems()}
         count: int = len(self.selected_courses)
         is_downloading: bool = self.current_worker is not None and self.current_worker.is_alive()
@@ -483,6 +582,9 @@ class MoodleDownloaderApp(QMainWindow):
         self.statusBar.showMessage(f"Selected {count} course{'s' if count != 1 else ''}")
 
     def browse_folder(self) -> None:
+        """
+        Opens a file dialog to allow the user to select a download location.
+        """
         current: str = self.location_input.text() or os.getcwd()
         folder: str = QFileDialog.getExistingDirectory(self, "Select Download Location", current)
         if folder:
@@ -490,6 +592,10 @@ class MoodleDownloaderApp(QMainWindow):
             self.settings.setValue("default_location", folder)
 
     def add_course(self) -> None:
+        """
+        Opens the AddCourseDialog to allow the user to add a new course to the
+        list.
+        """
         dialog = AddCourseDialog(self)
         if dialog.exec_():
             name, url = dialog.get_course_data()
@@ -511,6 +617,10 @@ class MoodleDownloaderApp(QMainWindow):
             self.statusBar.showMessage(f"Added course: {name}")
 
     def remove_selected_courses(self) -> None:
+        """
+        Removes the currently selected courses from the list after a confirmation
+        dialog.
+        """
         items: List[QListWidgetItem] = self.course_list.selectedItems()
         if not items:
             return
@@ -532,12 +642,17 @@ class MoodleDownloaderApp(QMainWindow):
             self.statusBar.showMessage(f"Removed {removed_count} course(s)")
 
     def save_courses_to_settings(self) -> None:
+        """Saves the current list of courses to the application settings."""
         try:
             self.settings.setValue("courses", list(self.all_courses.items()))
         except Exception as e:
             QMessageBox.warning(self, "Save Error", f"Could not save course list: {e}")
 
     def start_download(self) -> None:
+        """
+        Validates user inputs and starts the download process by creating and
+        running a worker thread.
+        """
         if self.current_worker and self.current_worker.is_alive():
             QMessageBox.warning(self, "Busy", "Download already running.")
             return
@@ -575,8 +690,7 @@ class MoodleDownloaderApp(QMainWindow):
                     keyring.set_password("MoodleDownApp", username, password)
                 else:
                     keyring.delete_password("MoodleDownApp", username)
-            except Exception as e:
-                print(f"Warning: Could not interact with keyring: {e}")
+            except Exception:
                 self.statusBar.showMessage("Could not save password to keychain.")
 
         # Prepare course data
@@ -604,6 +718,14 @@ class MoodleDownloaderApp(QMainWindow):
         self.current_worker.start()
 
     def set_ui_downloading_state(self, downloading: bool) -> None:
+        """
+        Enables or disables UI elements based on whether a download is in
+        progress.
+
+        Args:
+            downloading (bool): True to disable controls for downloading, False
+                                to re-enable them.
+        """
         enabled: bool = not downloading
         has_selection: bool = bool(self.selected_courses)
         self.download_btn.setEnabled(enabled and has_selection)
@@ -621,13 +743,34 @@ class MoodleDownloaderApp(QMainWindow):
         self.full_download_cb.setEnabled(enabled)
 
     def update_status(self, message: str) -> None:
+        """
+        Updates the status label and status bar with a message from a worker
+        thread.
+
+        Args:
+            message (str): The status message to display.
+        """
         self.statusBar.showMessage(message)
         self.status_label.setText(message[:100] + "..." if len(message) > 100 else message)  # Truncate long status
 
     def update_progress(self, value: float) -> None:
+        """
+        Updates the progress bar with a value from a worker thread.
+
+        Args:
+            value (float): The progress value (0-100).
+        """
         self.progress_bar.setValue(int(value))
 
     def download_finished(self, success: bool, message: str) -> None:
+        """
+        Handles the completion of a download, showing a summary message and
+        re-enabling the UI.
+
+        Args:
+            success (bool): True if the download was successful, False otherwise.
+            message (str): The final message from the worker.
+        """
         self.set_ui_downloading_state(False)
         final_status: str = ""
         if success:
@@ -645,6 +788,10 @@ class MoodleDownloaderApp(QMainWindow):
         self.update_selection()  # Refresh button states
 
     def trigger_manual_unzip(self) -> None:
+        """
+        Initiates the manual unzipping process for all archives in the
+        specified download folder.
+        """
         if not UNZIPPER_AVAILABLE:
             QMessageBox.warning(self, "Unavailable", "The 'unzipper' module is required for this feature but was not found.")
             return
@@ -709,12 +856,17 @@ class MoodleDownloaderApp(QMainWindow):
             self.unzip_button.setEnabled(True)
 
     def save_geometry_settings(self) -> None:
+        """Saves the window's current size, position, and splitter state."""
         self.settings.setValue("window_size", self.size())
         self.settings.setValue("window_pos", self.pos())
         if hasattr(self, 'splitter') and len(self.splitter.sizes()) == 2:
             self.settings.setValue("splitter_sizes", self.splitter.sizes())
 
     def restore_geometry_settings(self) -> None:
+        """
+        Restores the window's size, position, and splitter state from the last
+        session, ensuring it remains visible on the screen.
+        """
         try:
             # Get screen dimensions to ensure window is visible
             available_geometry = QApplication.desktop().availableGeometry()
@@ -753,7 +905,7 @@ class MoodleDownloaderApp(QMainWindow):
             self.center_on_screen()
 
     def center_on_screen(self) -> None:
-        """Centers the window on the primary screen"""
+        """Centers the window on the primary screen."""
         available_geometry = QApplication.desktop().availableGeometry()
         frame_geometry = self.frameGeometry()
         center_point = available_geometry.center()
@@ -762,6 +914,10 @@ class MoodleDownloaderApp(QMainWindow):
         print(f"Window centered on screen at {frame_geometry.topLeft().x()}, {frame_geometry.topLeft().y()}")
 
     def closeEvent(self, event: QEvent) -> None:
+        """
+        Handles the window close event, saving geometry and prompting the user
+        if a download is in progress.
+        """
         if self.current_worker and self.current_worker.is_alive():
             if QMessageBox.question(self, "Busy", "Download running. Exit anyway?",
                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.No:
@@ -772,6 +928,18 @@ class MoodleDownloaderApp(QMainWindow):
 
 # --- Playwright Check ---
 def check_and_install_playwright_browsers(parent_app: Optional[QApplication] = None) -> bool:
+    """
+    Checks if Playwright's browser dependencies are installed and prompts the
+    user to install them if they are missing.
+
+    Args:
+        parent_app (Optional[QApplication]): The main application instance,
+                                             required for showing dialogs.
+
+    Returns:
+        bool: True if browsers are installed or were successfully installed,
+              False otherwise.
+    """
     print("Checking for Playwright browsers...")
     try:
         with sync_playwright() as p:
@@ -829,8 +997,10 @@ def check_and_install_playwright_browsers(parent_app: Optional[QApplication] = N
         return False
 
 # --- Main Execution ---
-# --- Main Execution ---
 if __name__ == "__main__":
+    # Main entry point for the application.
+    # It initializes the QApplication, performs a check for Playwright
+    # components, and runs the main GUI window.
     QApplication.setOrganizationName("MoodleDown")
     QApplication.setApplicationName("MoodleDownApp")
     app: QApplication = QApplication(sys.argv)

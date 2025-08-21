@@ -1,3 +1,7 @@
+"""
+Parses HTML content from Moodle course pages to extract downloadable resources.
+"""
+
 import re
 import logging
 import os
@@ -8,14 +12,47 @@ from urllib.parse import urlparse, urljoin
 
 
 class ContentExtractor:
-    """Extracts and processes content from Moodle pages"""
+    """
+    Extracts and processes content from Moodle pages.
+
+    This class is responsible for parsing the HTML of a Moodle course page to
+    identify and extract meaningful information, such as course sections and
+    downloadable resources. It uses BeautifulSoup to navigate the HTML structure
+    and regular expressions to clean up extracted data.
+
+    Attributes:
+        logger (logging.Logger): A logger instance for logging messages.
+        base_url (str): The base URL of the Moodle instance, used to resolve
+                        relative URLs.
+    """
 
     def __init__(self, base_url: str) -> None:
+        """
+        Initializes the ContentExtractor with the Moodle base URL.
+
+        Args:
+            base_url (str): The base URL of the Moodle instance (e.g.,
+                            'https://moodle.example.com').
+        """
         self.logger: logging.Logger = logging.getLogger("MoodleDownPlaywright")
         self.base_url: str = base_url
 
     def extract_course_sections(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
-        """Extract course sections/categories from the Moodle page"""
+        """
+        Extracts course sections or topics from the parsed HTML of a course page.
+
+        Moodle pages are typically divided into sections (e.g., by week or topic).
+        This method attempts to identify these sections using common HTML structures
+        and class names.
+
+        Args:
+            soup (BeautifulSoup): The parsed HTML of the course page.
+
+        Returns:
+            List[Dict[str, Any]]: A list of dictionaries, where each dictionary
+                                  represents a section and contains its ID, name,
+                                  index, and the BeautifulSoup element.
+        """
         sections: List[Dict[str, Any]] = []
         try:
             # Try various selectors for section elements
@@ -66,7 +103,24 @@ class ContentExtractor:
         return sections
 
     def extract_section_resources(self, section_elem: Tag, section_name: str, current_url: str) -> List[Dict[str, str]]:
-        """Extract downloadable resources from a course section"""
+        """
+        Extracts downloadable resources from a single course section.
+
+        This method scans a section's HTML for links to activities and resources,
+        such as files, folders, and assignments, and filters for those that are
+        downloadable.
+
+        Args:
+            section_elem (Tag): The BeautifulSoup element for the course section.
+            section_name (str): The name of the section, used for organization.
+            current_url (str): The URL of the page being parsed, for resolving
+                               relative links.
+
+        Returns:
+            List[Dict[str, str]]: A list of dictionaries, each representing a
+                                  downloadable resource with its name, URL,
+                                  section, and type.
+        """
         resources: List[Dict[str, str]] = []
         activities: List[Tag] = section_elem.find_all(['li', 'div'], class_=lambda c: c and 'activity' in c.split())
 
@@ -111,7 +165,21 @@ class ContentExtractor:
         return resources
 
     def _detect_resource_type(self, link_elem: Tag, url: str) -> str:
-        """Detect resource type from link element and URL"""
+        """
+        Detects the type of a resource based on its link element and URL.
+
+        This helper method uses various clues—such as URL patterns, CSS classes,
+        and icon images—to determine if a link points to a file, folder, or
+        another type of resource that should be ignored.
+
+        Args:
+            link_elem (Tag): The <a> tag element of the resource.
+            url (str): The URL of the resource.
+
+        Returns:
+            str: A string representing the detected resource type (e.g., 'folder',
+                 'pdf', 'document', 'ignore').
+        """
         href: str = url.lower()
 
         # Check URL patterns
@@ -163,7 +231,20 @@ class ContentExtractor:
         return 'unknown'  # Default if unsure
 
     def _detect_doc_type_from_icon(self, icon_src: str) -> Optional[str]:
-        """Identify document type based on icon URL"""
+        """
+        Identifies the document type based on the resource's icon image URL.
+
+        Moodle often uses specific icons for different file types (e.g., a PDF
+        icon for PDF files). This method checks the icon's source URL for patterns
+        that indicate the file type.
+
+        Args:
+            icon_src (str): The 'src' attribute of the icon's <img> tag.
+
+        Returns:
+            Optional[str]: The detected document type (e.g., 'pdf', 'folder') or
+                           None if no specific type could be determined.
+        """
         if not icon_src:
             return None
 
@@ -205,7 +286,25 @@ class ContentExtractor:
         return None
 
     def get_download_links(self, html_content: str, current_url: str, logged_urls: Set[str]) -> Dict[str, Dict[str, str]]:
-        """Extract downloadable links from page and filter against already downloaded URLs"""
+        """
+        Extracts all downloadable links from the HTML content of a course page.
+
+        This is the main public method for this class. It orchestrates the process
+        of parsing the HTML, extracting sections, finding resources within those
+        sections, and filtering out any resources that have already been
+        downloaded (based on the provided set of logged URLs).
+
+        Args:
+            html_content (str): The raw HTML content of the course page.
+            current_url (str): The URL of the page, for resolving relative links.
+            logged_urls (Set[str]): A set of URLs that have already been
+                                    processed or downloaded, to avoid duplicates.
+
+        Returns:
+            Dict[str, Dict[str, str]]: A dictionary of resources to download, where
+                                       keys are the resource URLs and values are
+                                       dictionaries of resource metadata.
+        """
         to_download: Dict[str, Dict[str, str]] = {}
         try:
             soup = BeautifulSoup(html_content, 'html.parser')

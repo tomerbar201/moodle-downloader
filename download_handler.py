@@ -1,3 +1,15 @@
+"""
+This module defines the DownloadHandler class, which is responsible for managing
+the entire file download process. It handles the logic for fetching files from
+Moodle, including handling different resource types (e.g., files, folders),
+managing download history to avoid re-downloading files, and organizing the
+downloaded files into a structured directory.
+
+The class uses Playwright for making network requests and BeautifulSoup for
+parsing HTML when necessary (e.g., to find embedded resources). It also maintains
+a central log file to keep track of downloaded files across sessions.
+"""
+
 import os
 import re
 import time
@@ -8,7 +20,7 @@ from typing import Dict, Tuple, List, Optional, Callable, Set, Any
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from urllib.parse import urlparse, unquote, urljoin
-from playwright.sync_api import APIResponse, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
+from playwright.sync_api import APIResponse, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError, APIRequestContext
 
 from data_structures import DownloadResult
 from moodle_browser import MoodleBrowser
@@ -16,10 +28,38 @@ from file_operations import sanitize_folder_name
 
 
 class DownloadHandler:
-    """Handles downloading files from Moodle and tracking download history"""
+    """
+    Handles the downloading of files from Moodle and tracks download history.
+
+    This class orchestrates the process of downloading files, from adjusting URLs
+    for different resource types to saving the content and logging the download.
+    It maintains a log of downloaded files to prevent duplicates and can verify
+    the integrity of the log by checking for the existence of logged files.
+
+    Attributes:
+        moodle_browser (MoodleBrowser): An instance of MoodleBrowser to interact
+                                        with the browser and make requests.
+        api_request_context (Optional[APIRequestContext]): The Playwright context
+                                                           for making API requests.
+        central_download_log_file (str): The path to the central log file that
+                                         tracks all downloaded files.
+        logger (logging.Logger): A logger instance for logging messages.
+        _logged_urls (Set[str]): A set of URLs that have been successfully
+                                 downloaded, loaded from the log file.
+    """
+
     LOG_SEPARATOR = "\t"  # Separator for URL and Filename in log
 
     def __init__(self, moodle_browser: MoodleBrowser, central_download_log_file: str) -> None:
+        """
+        Initializes the DownloadHandler.
+
+        Args:
+            moodle_browser (MoodleBrowser): The MoodleBrowser instance to use for
+                                            downloads.
+            central_download_log_file (str): Path to the file used for logging
+                                             downloaded URLs.
+        """
         self.moodle_browser: MoodleBrowser = moodle_browser
         self.api_request_context: Optional[APIRequestContext] = moodle_browser.api_request_context
         self.central_download_log_file: str = central_download_log_file
@@ -27,7 +67,13 @@ class DownloadHandler:
         self._logged_urls = self._load_and_verify_logged_urls()
 
     def _read_log_lines(self) -> List[str]:
-        """Reads all lines from the central download log file."""
+        """
+        Reads all lines from the central download log file.
+
+        Returns:
+            List[str]: A list of lines from the log file. Returns an empty list
+                       if the file doesn't exist or an error occurs.
+        """
         if not os.path.exists(self.central_download_log_file):
             self.logger.warning(
                 f"Central download log file '{self.central_download_log_file}' not found. Starting fresh.")
@@ -40,7 +86,17 @@ class DownloadHandler:
             return []
 
     def _process_log_line(self, line: str) -> Optional[Tuple[str, str]]:
-        """Processes a single log line, verifies file existence, returns (url, line) if valid."""
+        """
+        Processes a single log line, verifies file existence, and returns the URL
+        and the original line if the entry is valid.
+
+        Args:
+            line (str): A single line from the log file.
+
+        Returns:
+            Optional[Tuple[str, str]]: A tuple containing the URL and the valid
+                                      log line if the file exists, otherwise None.
+        """
         stripped_line: str = line.strip()
         if not stripped_line:
             return None
@@ -61,7 +117,15 @@ class DownloadHandler:
         return None
 
     def _rewrite_cleaned_log(self, valid_log_entries: List[str], removed_count: int) -> None:
-        """Rewrites the log file with only the valid entries."""
+        """
+        Rewrites the log file with only the valid entries, removing entries for
+        files that no longer exist.
+
+        Args:
+            valid_log_entries (List[str]): A list of log lines that have been
+                                           verified as valid.
+            removed_count (int): The number of entries that were removed.
+        """
         if removed_count == 0:
             self.logger.info("No missing files found in log entries. Log file not rewritten.")
             return
@@ -76,7 +140,17 @@ class DownloadHandler:
             self.logger.error(f"Error rewriting cleaned download log file: {e_write}")
 
     def _load_and_verify_logged_urls(self) -> Set[str]:
-        """Load previously downloaded URLs from log, verify files exist by processing lines."""
+        """
+        Loads previously downloaded URLs from the log file and verifies that the
+        corresponding files still exist on disk.
+
+        This method cleans the log file by removing entries for which the file is
+        missing, ensuring the log remains accurate.
+
+        Returns:
+            Set[str]: A set of URLs corresponding to files that have been
+                      downloaded and still exist.
+        """
         logged_urls: Set[str] = set()
         valid_log_entries: List[str] = []
         removed_count: int = 0
@@ -100,11 +174,27 @@ class DownloadHandler:
         return logged_urls
 
     def get_logged_urls(self) -> Set[str]:
-        """Return the set of already downloaded URLs"""
+        """
+        Returns the set of already downloaded URLs.
+
+        Returns:
+            Set[str]: A set of URLs that have been successfully downloaded.
+        """
         return self._logged_urls
 
     def _get_filename_from_headers(self, headers: Dict[str, str]) -> Optional[str]:
-        """Extract filename from Content-Disposition header"""
+        """
+        Extracts the filename from the 'Content-Disposition' header of an HTTP
+        response.
+
+        It supports both standard and RFC 5987 encoded filenames.
+
+        Args:
+            headers (Dict[str, str]): A dictionary of HTTP response headers.
+
+        Returns:
+            Optional[str]: The extracted filename, or None if not found.
+        """
         content_disposition = headers.get('content-disposition')
         if not content_disposition:
             return None
@@ -145,7 +235,23 @@ class DownloadHandler:
 
     def _determine_filename_and_extension(self, suggested_name: str, response: APIResponse, url: str,
                                           resource_type: str) -> Tuple[str, Optional[str]]:
-        """Determine appropriate filename and extension for the downloaded file"""
+        """
+        Determines the appropriate filename and extension for a downloaded file.
+
+        It prioritizes the 'Content-Disposition' header, but falls back to using
+        the suggested name from the page, the URL, and the content type.
+
+        Args:
+            suggested_name (str): The name of the resource as it appears on the
+                                  Moodle page.
+            response (APIResponse): The Playwright response object.
+            url (str): The final URL from which the content was downloaded.
+            resource_type (str): The type of the resource (e.g., 'folder', 'pdf').
+
+        Returns:
+            Tuple[str, Optional[str]]: A tuple containing the cleaned base
+                                       filename and the file extension.
+        """
         filename: Optional[str] = None
         ext: Optional[str] = None
 
@@ -193,7 +299,20 @@ class DownloadHandler:
         return filename, ext
 
     def _adjust_folder_url(self, url: str, resource_type: str) -> str:
-        """Adjusts the URL if the resource is a folder."""
+        """
+        Adjusts the URL for downloading a folder.
+
+        Moodle folders are downloaded as zip files, and this method converts the
+        folder view URL to the appropriate download URL.
+
+        Args:
+            url (str): The original URL of the resource.
+            resource_type (str): The type of the resource.
+
+        Returns:
+            str: The adjusted URL for downloading, or the original URL if no
+                 adjustment is needed.
+        """
         if resource_type == 'folder' and 'view.php' in url and '?id=' in url:
             adjusted_url = url.replace('view.php', 'download_folder.php')
             self.logger.info(f"Adjusted folder URL for download: {adjusted_url}")
@@ -201,7 +320,16 @@ class DownloadHandler:
         return url
 
     def _fetch_initial_response(self, url: str) -> Optional[APIResponse]:
-        """Fetches the initial response from the given URL."""
+        """
+        Fetches the initial response from the given URL using Playwright's API
+        request context.
+
+        Args:
+            url (str): The URL to fetch.
+
+        Returns:
+            Optional[APIResponse]: The response object, or None if an error occurs.
+        """
         try:
             return self.api_request_context.get(
                 url,
@@ -217,7 +345,17 @@ class DownloadHandler:
             return None
 
     def _find_embedded_resource_url(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        """Searches HTML soup for an embedded resource URL (iframe, object, pluginfile)."""
+        """
+        Searches the HTML of an intermediate page for an embedded resource URL,
+        such as in an iframe or object tag.
+
+        Args:
+            soup (BeautifulSoup): The parsed HTML of the page.
+            base_url (str): The base URL for resolving relative links.
+
+        Returns:
+            Optional[str]: The URL of the embedded resource, or None if not found.
+        """
         iframe: Optional[Tag] = soup.find('iframe', id='resourceobject') or soup.find('iframe', class_='resourceworkarea')
         if iframe and iframe.get('src'):
             return urljoin(base_url, iframe['src'])
@@ -238,7 +376,22 @@ class DownloadHandler:
         return None
 
     def _handle_intermediate_page(self, response: APIResponse, suggested_name: str) -> Optional[APIResponse]:
-        """Handles cases where the initial response is an HTML page potentially embedding the resource."""
+        """
+        Handles cases where the initial response is an HTML page that may embed
+        the actual resource, rather than the resource itself.
+
+        This is common for Moodle resources, which are often displayed within a
+        viewer page.
+
+        Args:
+            response (APIResponse): The initial response from the server.
+            suggested_name (str): The name of the resource being downloaded.
+
+        Returns:
+            Optional[APIResponse]: The final response containing the actual file
+                                   content, or the original response if no
+                                   embedding is detected, or None on error.
+        """
         response_content_type: str = response.headers.get('content-type', '').lower()
         is_html: bool = 'text/html' in response_content_type
         is_intermediate_url: bool = 'mod/resource/view.php' in response.url or 'mod/page/view.php' in response.url
@@ -262,7 +415,17 @@ class DownloadHandler:
             return None
 
     def _check_response_status(self, response: Optional[APIResponse], suggested_name: str) -> bool:
-        """Checks if the final APIResponse is valid (exists and status OK)."""
+        """
+        Checks if the final APIResponse is valid (i.e., it exists and has a
+        successful status code).
+
+        Args:
+            response (Optional[APIResponse]): The response to check.
+            suggested_name (str): The name of the resource for logging purposes.
+
+        Returns:
+            bool: True if the response is valid, False otherwise.
+        """
         if not response:
             self.logger.error(f"Download failed for '{suggested_name}'. No valid response received.")
             return False
@@ -281,7 +444,17 @@ class DownloadHandler:
         return True
 
     def _save_response_content(self, response: APIResponse, target_filepath: str) -> Tuple[bool, int]:
-        """Saves the response body to the specified filepath. Returns success status and filesize."""
+        """
+        Saves the content of the response to a file.
+
+        Args:
+            response (APIResponse): The response containing the file content.
+            target_filepath (str): The full path where the file should be saved.
+
+        Returns:
+            Tuple[bool, int]: A tuple containing a boolean indicating success and
+                              an integer for the file size.
+        """
         try:
             os.makedirs(os.path.dirname(target_filepath), exist_ok=True)
             file_content: bytes = response.body()
@@ -306,7 +479,13 @@ class DownloadHandler:
             return False, 0
 
     def _log_successful_download(self, original_url: str, filepath: str) -> None:
-        """Appends a successful download entry to the central log file."""
+        """
+        Appends a record of a successful download to the central log file.
+
+        Args:
+            original_url (str): The original URL of the downloaded item.
+            filepath (str): The path to the saved file.
+        """
         try:
             log_entry: str = f"{original_url}{self.LOG_SEPARATOR}{filepath}\n"
             with open(self.central_download_log_file, 'a', encoding='utf-8') as f_log:
@@ -317,7 +496,18 @@ class DownloadHandler:
             self.logger.error(f"Failed to write to central log file: {e}")
 
     def download_file(self, item_info: Dict[str, Any], target_filepath_base: str) -> DownloadResult:
-        """Download a single file using helper methods."""
+        """
+        Downloads a single file, handling all steps from URL adjustment to saving
+        and logging.
+
+        Args:
+            item_info (Dict[str, Any]): A dictionary containing information about
+                                        the item to download (URL, name, type).
+            target_filepath_base (str): The base path for the downloaded file.
+
+        Returns:
+            DownloadResult: An object containing the result of the download.
+        """
         initial_url: str = item_info['url']
         suggested_name: str = item_info['name']
         resource_type: str = item_info['type']
@@ -357,7 +547,24 @@ class DownloadHandler:
                        to_download: Dict[str, Dict[str, Any]],
                        progress_callback: Optional[Callable[[str, float], None]] = None,
                        organize_by_section: bool = True) -> Tuple[List[str], List[str], List[str]]:
-        """Download all files, organizing by section if requested"""
+        """
+        Downloads all files from a given dictionary of items to download.
+
+        It organizes files by section if requested and provides progress updates
+        through a callback.
+
+        Args:
+            to_download (Dict[str, Dict[str, Any]]): A dictionary of items to
+                                                     download.
+            progress_callback (Optional[Callable[[str, float], None]]): A function
+                to call with progress updates.
+            organize_by_section (bool): Whether to create subdirectories for each
+                                        course section.
+
+        Returns:
+            Tuple[List[str], List[str], List[str]]: A tuple containing lists of
+                successful, skipped, and failed downloads.
+        """
         failed: List[str] = [] ; successful: List[str] = [] ; skipped: List[str] = []
         total_files = len(to_download)
 

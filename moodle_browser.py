@@ -1,3 +1,8 @@
+"""
+Browser automation for Moodle using Playwright.
+Handles login, navigation, and page content extraction.
+"""
+
 import logging
 import re
 from typing import Optional, Dict
@@ -6,22 +11,38 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, Error as
 
 
 class MoodleBrowser:
-    """Handles browser session, authentication and navigation for Moodle.
-
-    Args:
-        download_folder: Base folder used for downloads.
-        year_range: Academic year segment appearing in Moodle URLs (e.g. '2024-25', '2025-26').
-        headless: Whether to launch the browser headless.
-
-    Notes:
-        Historically the constructor order was (download_folder, year_range, headless). Some call
-        sites (now fixed) passed a boolean second positional argument assuming it was *headless*.
-        To remain backward compatible we keep the original ordering but strongly encourage callers
-        to use keyword arguments.
     """
+    Handles the browser session, authentication, and navigation for Moodle.
+
+    This class uses Playwright to automate a web browser, allowing the application
+    to log into Moodle, navigate to course pages, and extract page content. It
+    manages the Playwright instance, browser, context, and page objects.
+
+    Attributes:
+        download_folder (str): The base folder where downloaded files will be
+                               stored.
+        year_range (str): The academic year segment used in Moodle URLs (e.g.,
+                          '2024-25').
+        base_url (str): The base URL for the Moodle instance, constructed from
+                        the year range.
+        headless (bool): A flag indicating whether to run the browser in
+                         headless mode.
+        headers (Dict[str, str]): A dictionary of HTTP headers to use for
+                                  requests, including a User-Agent.
+        logger (logging.Logger): A logger instance for logging messages.
+    """
+
     BASE_URL_TEMPLATE = "https://moodle.huji.ac.il/{}"
 
     def __init__(self, download_folder: str, year_range: str = "2024-25", headless: bool = False) -> None:
+        """
+        Initializes the MoodleBrowser.
+
+        Args:
+            download_folder (str): The base folder for downloads.
+            year_range (str): The academic year for the Moodle URL.
+            headless (bool): Whether to run the browser in headless mode.
+        """
         self.download_folder: str = download_folder
         self.year_range: str = str(year_range)
         # Normalise common user inputs like '2025-2026' -> '2025-26'
@@ -41,10 +62,17 @@ class MoodleBrowser:
 
     @staticmethod
     def _normalize_year_range(year_text: str) -> str:
-        """Normalize various year range formats to the canonical 'YYYY-YY'.
+        """
+        Normalizes various year range formats to the canonical 'YYYY-YY' format.
 
-        Accepts inputs like '2025-2026', '2025-26', '2025/2026'. If parsing fails it returns
-        the original string unchanged so the user can still attempt navigation.
+        This allows for flexibility in user input while maintaining a consistent
+        internal format.
+
+        Args:
+            year_text (str): The user-provided year range string.
+
+        Returns:
+            str: The normalized year range string.
         """
         try:
             import re as _re
@@ -62,7 +90,12 @@ class MoodleBrowser:
             return year_text.strip()
 
     def setup_browser(self) -> None:
-        """Initialize and configure the browser"""
+        """
+        Initializes and configures the Playwright browser instance.
+
+        This method launches a Chromium browser, creates a new context and page,
+        and sets up an API request context for making direct HTTP requests.
+        """
         try:
             self._playwright = sync_playwright().start()
             try:
@@ -95,7 +128,20 @@ class MoodleBrowser:
             raise
 
     def login(self, username: str, password: str) -> bool:
-        """Log in to Moodle with provided credentials"""
+        """
+        Logs in to Moodle using the provided credentials.
+
+        It navigates to the login page, fills in the username and password,
+        submits the form, and verifies that the login was successful by checking
+        for navigation to the user's dashboard.
+
+        Args:
+            username (str): The Moodle username.
+            password (str): The Moodle password.
+
+        Returns:
+            bool: True if the login was successful, False otherwise.
+        """
         if not self.page or not self.context:
             self.logger.error("Browser not set up correctly. Call setup_browser() first.")
             return False
@@ -169,7 +215,20 @@ class MoodleBrowser:
             return False
 
     def navigate_to_course(self, course_url: str) -> bool:
-        """Navigate to a specific Moodle course page using its full URL"""
+        """
+        Navigates to a specific Moodle course page using its full URL.
+
+        It first attempts to navigate directly to the URL. If that fails or
+        leads to a different page, it tries searching for the course from the
+        dashboard as a fallback.
+
+        Args:
+            course_url (str): The full URL of the course page.
+
+        Returns:
+            bool: True if navigation to the course page was successful, False
+                  otherwise.
+        """
         if not self.page:
             self.logger.error("Page not available for navigation.")
             return False
@@ -250,7 +309,13 @@ class MoodleBrowser:
             return False
 
     def get_page_content(self) -> str:
-        """Fetch HTML content of the current page"""
+        """
+        Fetches the HTML content of the current page.
+
+        Returns:
+            str: The HTML content of the page, or an empty string if an error
+                 occurs.
+        """
         if not self.page:
             self.logger.error("Page not available.")
             return ""
@@ -261,7 +326,12 @@ class MoodleBrowser:
             return ""
 
     def close(self) -> None:
-        """Close browser and clean up resources"""
+        """
+        Closes the browser and cleans up all Playwright resources.
+
+        This method should be called at the end of the session to ensure that
+        all browser processes are terminated and resources are released.
+        """
         self.logger.info("Closing Playwright browser and resources...")
         for resource, name in [(self.context, "context"), (self.browser, "browser"), (self._playwright, "Playwright")]:
             if resource:

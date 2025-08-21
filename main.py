@@ -15,9 +15,7 @@ def _extract_course_id_from_url(url: str) -> Optional[str]:
     if not url:
         return None
     match = re.search(r'[?&]id=(\d+)', url)
-    if match:
-        return match.group(1)
-    return None
+    return match.group(1) if match else None
 
 
 def download_course(course_url: str,
@@ -33,10 +31,9 @@ def download_course(course_url: str,
                     full_download: bool = False) -> bool:
     """Main function to download course content from Moodle"""
 
-    browser: Optional[MoodleBrowser] = existing_browser
-    should_close_browser: bool = existing_browser is None
-    overall_success: bool = False
-    logger: logging.Logger; log_file_path: str; central_download_log_file: str
+    browser = existing_browser
+    should_close_browser = existing_browser is None
+    overall_success = False
     logger, log_file_path, central_download_log_file = setup_logging()
 
     def update_progress(message: str, percentage: float) -> None:
@@ -116,8 +113,7 @@ def download_course(course_url: str,
 
         # Step 8: Download files
         update_progress(f"Found {len(links_to_download)} new items. Starting download...", 30)
-        successful: List[str]; failed: List[str]
-        successful, _, failed = downloader.download_files(  # type: ignore
+        successful, _, failed = downloader.download_files(
             links_to_download,
             lambda msg, pct: update_progress(msg, 30 + pct * 0.7),  # Scale progress 30-100%
             organize_by_section
@@ -153,8 +149,7 @@ def download_course(course_url: str,
 
 # Command Line Interface
 if __name__ == "__main__":
-    logger: logging.Logger; log_file_path: str; central_download_log_file: str
-    logger, log_file_path, central_download_log_file = setup_logging()  # type: ignore
+    logger, log_file_path, central_download_log_file = setup_logging()
 
     print("MoodleDown Playwright Edition - Course Downloader")
     print("-" * 49)
@@ -172,32 +167,24 @@ if __name__ == "__main__":
         course_name_input: str = input("Enter Course Name (optional, for folder name): ").strip()
 
         # Determine download path
-        folder_name: str = course_name_input if course_name_input else str(course_id)
-        folder_name = folder_name.replace(r'[<>:"/\\|?*]', '_').strip().strip('. ')
+        folder_name = course_name_input if course_name_input else str(course_id)
+        folder_name = re.sub(r'[<>:"/\\|?*]', '_', folder_name).strip('. ')
         folder_name = re.sub(r'[\s_]+', '_', folder_name)
         folder_name = folder_name if folder_name else f"moodle_course_{course_id}"
-        intended_download_folder_path: str = os.path.join(base_download_dir, folder_name)
+        intended_download_folder_path = os.path.join(base_download_dir, folder_name)
 
         # Get authentication details
-        username: str = input("Enter Moodle Username: ").strip()
-        password: str = getpass.getpass("Enter Moodle Password: ")
+        username = input("Enter Moodle Username: ").strip()
+        password = getpass.getpass("Enter Moodle Password: ")
 
         # Configuration options
         headless_mode = input("Run in headless mode? (Y/n): ").strip().lower() != 'n'
         organize_sections = input("Organize downloads by section? (Y/n): ").strip().lower() != 'n'
         full_download_mode = input("Perform full download (ignore history)? (y/N): ").strip().lower() == 'y'
 
-        # Display summary before starting
-        print(f"\nStarting download process...")
-        print(f"Course URL: {course_url}")
-        print(f"Course ID: {course_id}")
-        print(f"Username: {username}")
-        print(f"Course Download Location: {intended_download_folder_path}")
-        print(f"Headless Mode: {headless_mode}")
-        print(f"Organize by Section: {organize_sections}")
-        print(f"Full Download Mode: {full_download_mode}")
-        print(f"App Log File: {log_file_path}")
-        print(f"Central History Log: {central_download_log_file}")
+        print(f"\nStarting download for course {course_id}...")
+        print(f"Download location: {intended_download_folder_path}")
+        print("-" * 50)
         print("-" * 20)
         print()  # Start progress on its own line
 
