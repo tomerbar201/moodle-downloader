@@ -52,10 +52,22 @@ except ImportError:
     keyring = None
     KEYRING_AVAILABLE = False
 
+_unzipper_mod = None
 try:
-    import unzipper
-    UNZIPPER_AVAILABLE = True
+    from . import unzipper as _unzipper_mod
 except ImportError:
+    try:
+        import unzipper as _unzipper_mod
+    except ImportError:
+        try:
+            from src import unzipper as _unzipper_mod
+        except ImportError:
+            _unzipper_mod = None
+
+if _unzipper_mod is not None:
+    unzipper = _unzipper_mod
+    UNZIPPER_AVAILABLE = True
+else:
     unzipper = None
     UNZIPPER_AVAILABLE = False
 
