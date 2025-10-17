@@ -50,16 +50,23 @@ A Python application for automating the download of course materials from Moodle
    playwright install
    ```
 
+4. **(Optional) Build a standalone Windows executable:**
+   ```bash
+   pip install pyinstaller
+   pyinstaller --noconfirm --clean moodle_downloader.spec
+   ```
+   The executable will be written to `dist/MoodleDownloader/MoodleDownloader.exe`. On first launch it will download Playwright's Chromium build into `%LOCALAPPDATA%\MoodleDown\pw-browsers` if it is not already present.
+
 ## Usage
 
 ### GUI Mode (Recommended)
 ```bash
-python moodledown_gui.py
+python run_gui.py
 ```
 
 ### Command Line Mode
 ```bash
-python main.py
+python run_cli.py <course_url> <username> <password> <download_folder>
 ```
 
 Follow the prompts to enter your Moodle credentials and select courses to download.
@@ -67,26 +74,31 @@ Follow the prompts to enter your Moodle credentials and select courses to downlo
 ## Project Structure
 
 ```
-├── main.py                 # Command-line interface
-├── moodledown_gui.py      # GUI application  
-├── moodle_browser.py      # Browser automation
-├── content_extractor.py   # HTML parsing
-├── download_handler.py    # File download management
-├── file_operations.py     # File utilities
-├── data_structures.py     # Data classes
-├── unzipper.py           # Archive extraction
-└── requirements.txt      # Dependencies
+moodle-downloader/
+├── src/                      # Source code
+│   ├── main.py              # Core download logic
+│   ├── moodledown_gui.py    # GUI application  
+│   ├── moodle_browser.py    # Browser automation
+│   ├── content_extractor.py # HTML parsing
+│   ├── course_extractor.py  # Course extraction
+│   ├── download_handler.py  # File download management
+│   ├── file_operations.py   # File utilities
+│   ├── data_structures.py   # Data classes
+│   ├── unzipper.py          # Archive extraction
+│   └── chromium_setup.py    # Browser setup
+├── tests/                    # Test files
+│   ├── test_course_extractor.py
+│   └── test_moodle_downloader.py
+├── docs/                     # Documentation
+│   ├── AUTO_FILL_FEATURE.md
+│   ├── AUTOFILL_UPDATE.md
+│   └── CHANGES.md
+├── run_gui.py               # GUI entry point
+├── run_cli.py               # CLI entry point
+├── setup.py                 # Package setup
+├── requirements.txt         # Dependencies
+└── moodle_downloader.spec   # PyInstaller spec
 ```
-
-## Usage
-
-To run the application, execute the `moodledown_gui.py` file:
-
-```bash
-python moodledown_gui.py
-```
-
-Upon launching, you will be prompted to enter your Moodle username and password. The application will then log in, fetch your courses, and display them. You can then select the courses you want to download files from and choose a destination folder.
 
 ## Contributing
 
@@ -100,4 +112,4 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 Tomer Bar - tomerbar2021@gmail.com
 
-Project Link: [https://github.com/tomerbar2021/moodle-downloader](https://github.com/tomerbar2021/moodle-downloader)
+Project Link: [https://github.com/tomerbar201/moodle-downloader](https://github.com/tomerbar201/moodle-downloader)

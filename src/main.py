@@ -2,20 +2,13 @@ import os
 import re
 import getpass
 import logging
-from typing import Optional, Callable, List, Tuple, Any
+from typing import Optional, Callable, List, Tuple
 
-from moodle_browser import MoodleBrowser
-from content_extractor import ContentExtractor
-from download_handler import DownloadHandler
-from file_operations import create_course_folder, setup_logging
-
-
-def _extract_course_id_from_url(url: str) -> Optional[str]:
-    """Helper to extract the Moodle course ID from a URL using regex."""
-    if not url:
-        return None
-    match = re.search(r'[?&]id=(\d+)', url)
-    return match.group(1) if match else None
+from .moodle_browser import MoodleBrowser
+from .content_extractor import ContentExtractor
+from .download_handler import DownloadHandler
+from .file_operations import create_course_folder, setup_logging
+from .chromium_setup import ensure_chromium_once
 
 
 def download_course(course_url: str,
@@ -24,34 +17,31 @@ def download_course(course_url: str,
                     download_folder: str,
                     progress_callback: Optional[Callable[[str, float], None]] = None,
                     headless: bool = True,
-                    year_range: str = "2024-25",
                     organize_by_section: bool = True,
                     course_name: Optional[str] = None,
-                    existing_browser: Optional[MoodleBrowser] = None,
-                    full_download: bool = False) -> bool:
+                    year_range: str = "2024-25") -> bool:
     """Main function to download course content from Moodle"""
 
-    browser = existing_browser
-    should_close_browser = existing_browser is None
+    browser = None
     overall_success = False
     logger, log_file_path, central_download_log_file = setup_logging()
 
-    def update_progress(message: str, percentage: float) -> None:
+    def update_progress(message: str, percentage: float):
         """Forward progress updates to the callback if provided"""
         if progress_callback:
             progress_callback(message, max(0.0, min(100.0, percentage)))
 
-    try:
-        # Step 1: Initialize and Validate URL
-        update_progress("Initializing...", 0)
-        course_id = _extract_course_id_from_url(course_url)
-        if not course_id:
-            logger.error(f"Invalid course URL provided. Could not find a course ID in: {course_url}")
-            update_progress("Invalid course URL", 100)
-            return False
+    chromium_ok, chromium_message = ensure_chromium_once()
+    if not chromium_ok:
+        update_progress("Chromium setup failed", 100)
+        logger.error(f"Chromium unavailable: {chromium_message}")
+        return False
 
-        course_folder: str = create_course_folder(course_id, os.path.dirname(download_folder),
-                                                  os.path.basename(download_folder))
+    try:
+        # Step 1: Initialize
+        update_progress("Initializing...", 0)
+        course_folder = create_course_folder(course_url, os.path.dirname(download_folder),
+                                             os.path.basename(download_folder))
         logger.info(f"Target download folder for this course: {course_folder}")
 
         # Step 2: Verify central log is accessible
@@ -62,53 +52,46 @@ def download_course(course_url: str,
         except IOError as e:
             logger.error(f"Could not create/access central download log: {e}. Proceeding without URL filtering.")
 
-        # Step 3: Set up browser (only if not provided)
-        if browser is None:
-            browser = MoodleBrowser(download_folder=course_folder, year_range=year_range, headless=headless)
-            browser.setup_browser()
+        # Step 3: Set up browser
+        browser = MoodleBrowser(course_folder, headless, year_range)
+        browser.setup_browser()
 
-            # Step 4: Perform login (only if new browser)
-            update_progress("Logging in...", 5)
-            if not browser.login(username, password):
-                update_progress("Login failed", 100)
-                logger.error("Moodle login failed.")
-                return False
-        else:
-            # Update the download folder for the existing browser
-            browser.download_folder = course_folder
-            logger.info("Using existing browser session")
+        # Step 4: Perform login
+        update_progress("Logging in...", 5)
+        if not browser.login(username, password):
+            update_progress("Login failed", 100)
+            logger.error("Moodle login failed.")
+            return False
 
         # Step 5: Navigate to the course
         update_progress("Navigating to course...", 15)
         if not browser.navigate_to_course(course_url):
             update_progress("Course navigation failed", 100)
-            logger.error(f"Failed to navigate to course {course_id} using URL: {course_url}.")
+            logger.error(f"Failed to navigate to course {course_url}.")
             return False
 
         # Step 6: Setup content extractor and download handler
         update_progress("Analyzing course content...", 25)
-        downloader: DownloadHandler = DownloadHandler(browser, central_download_log_file)
-        content_extractor: ContentExtractor = ContentExtractor(browser.BASE_URL)
+        downloader = DownloadHandler(browser, central_download_log_file)
+        content_extractor = ContentExtractor(browser.BASE_URL)
 
         # Step 7: Extract download links from page content
-        html_content: str = browser.get_page_content()
+        html_content = browser.get_page_content()
         if not html_content:
             update_progress("Failed to get page content", 100)
             logger.error("Could not retrieve page content.")
-            return False  # type: ignore
+            return False
 
-        # Get links and filter against previously downloaded URLs *unless* full_download is True
-        urls_to_ignore = set() if full_download else downloader.get_logged_urls()
-
+        # Get links and filter against previously downloaded URLs
         links_to_download = content_extractor.get_download_links(
             html_content,
             browser.page.url if browser.page else browser.BASE_URL,
-            urls_to_ignore
+            downloader.get_logged_urls()
         )
 
         if not links_to_download:
             update_progress("No new downloadable content found.", 100)
-            logger.info(f"No new items to download for course {course_id}.")
+            logger.info(f"No new items to download for course {course_url}.")
             return True  # Success if nothing new needed
 
         # Step 8: Download files
@@ -121,7 +104,7 @@ def download_course(course_url: str,
 
         # Step 9: Finalize and report results
         overall_success = not failed  # Success if no failures
-        msg: str = "Completed."
+        msg = "Completed."
         if successful:
             msg += f" {len(successful)} downloaded/updated."
         if failed:
@@ -140,8 +123,7 @@ def download_course(course_url: str,
         update_progress("Interrupted by user", 100)
         overall_success = False
     finally:
-        # Only close the browser if we created it
-        if browser and should_close_browser:
+        if browser:
             browser.close()
 
     return overall_success
@@ -157,43 +139,49 @@ if __name__ == "__main__":
     try:
         # Get user inputs
         course_url = input("Enter Moodle Course URL: ").strip()
-        course_id = _extract_course_id_from_url(course_url)
-        if not course_id:
-            print("Error: Invalid Moodle URL. It must contain a course ID like '?id=12345'.")
+        if not course_url:
+            print("Error: Course URL is required.")
             exit(1)
 
-        base_download_dir: str = input(
+        base_download_dir = input(
             "Enter base download directory (leave blank for current dir): ").strip() or os.getcwd()
-        course_name_input: str = input("Enter Course Name (optional, for folder name): ").strip()
+        course_name_input = input("Enter Course Name (optional, for folder name): ").strip()
 
         # Determine download path
-        folder_name = course_name_input if course_name_input else str(course_id)
-        folder_name = re.sub(r'[<>:"/\\|?*]', '_', folder_name).strip('. ')
+        folder_name = course_name_input if course_name_input else "moodle_course"
+        folder_name = folder_name.replace(r'[<>:"/\\|?*]', '_').strip().strip('. ')
         folder_name = re.sub(r'[\s_]+', '_', folder_name)
-        folder_name = folder_name if folder_name else f"moodle_course_{course_id}"
+        folder_name = folder_name if folder_name else "moodle_course"
         intended_download_folder_path = os.path.join(base_download_dir, folder_name)
 
         # Get authentication details
         username = input("Enter Moodle Username: ").strip()
-        password = getpass.getpass("Enter Moodle Password: ")
+        password = input("Enter Moodle Password: ")
 
         # Configuration options
         headless_mode = input("Run in headless mode? (Y/n): ").strip().lower() != 'n'
         organize_sections = input("Organize downloads by section? (Y/n): ").strip().lower() != 'n'
-        full_download_mode = input("Perform full download (ignore history)? (y/N): ").strip().lower() == 'y'
 
-        print(f"\nStarting download for course {course_id}...")
-        print(f"Download location: {intended_download_folder_path}")
-        print("-" * 50)
+        # Display summary before starting
+        print(f"\nStarting download process...")
+        print(f"Course URL: {course_url}")
+        print(f"Username: {username}")
+        print(f"Course Download Location: {intended_download_folder_path}")
+        print(f"Headless Mode: {headless_mode}")
+        print(f"Organize by Section: {organize_sections}")
+        print(f"App Log File: {log_file_path}")
+        print(f"Central History Log: {central_download_log_file}")
         print("-" * 20)
         print()  # Start progress on its own line
 
         # Progress callback for console output
-        last_msg: List[str] = [""]  # Use list for mutable reference
+        last_msg = [""]  # Use list for mutable reference
 
-        def console_progress(message: str, percentage: float) -> None:
+
+        def console_progress(message: str, percentage: float):
             print(f"\rProgress: {percentage:.1f}% - {message.ljust(80)}", end="")
             last_msg[0] = message
+
 
         # Call the main download function
         success = download_course(
@@ -204,8 +192,7 @@ if __name__ == "__main__":
             progress_callback=console_progress,
             headless=headless_mode,
             organize_by_section=organize_sections,
-            course_name=course_name_input,
-            full_download=full_download_mode
+            course_name=course_name_input
         )
 
         print()  # Newline after progress bar
@@ -225,10 +212,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\nAn unexpected error occurred: {e}")
         logging.exception("Unhandled exception in main execution block.")
-
-    # Display options to the user
-    print("\n--- How to use this program ---")
-    print("1. Find the main page URL for each course you want to download (it's recommended to add all at once).")
-    print("2. Enter your Moodle email and password when prompted.")
-    print("3. Select the courses you want to download from the list.")
-

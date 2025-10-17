@@ -3,9 +3,8 @@ import zipfile
 import argparse
 import sys
 import time # Added for potential throttling if needed
-from typing import Optional, Callable, Tuple
 
-def unzip_recursive(folder_path: str, status_callback: Optional[Callable[[str], None]] = None) -> Tuple[int, int, int]:
+def unzip_recursive(folder_path, status_callback=None):
 
     if not os.path.isdir(folder_path):
         message = f"Error: Folder not found or is not a directory: {folder_path}"
@@ -15,14 +14,14 @@ def unzip_recursive(folder_path: str, status_callback: Optional[Callable[[str], 
             print(message)
         return 0, 0, 0
 
-    abs_folder_path: str = os.path.abspath(folder_path)
-    start_message: str = f"Starting recursive unzip in: {abs_folder_path}"
+    abs_folder_path = os.path.abspath(folder_path)
+    start_message = f"Starting recursive unzip in: {abs_folder_path}"
     if status_callback:
         status_callback(start_message)
     else:
         print(start_message)
         print("-" * 30)
-    
+
     found_zips = 0
     extracted_count = 0
     error_count = 0
@@ -35,11 +34,11 @@ def unzip_recursive(folder_path: str, status_callback: Optional[Callable[[str], 
             for filename in filenames:
                 if filename.lower().endswith('.zip'):
                     found_zips += 1
-                    zip_filepath: str = os.path.join(dirpath, filename)
+                    zip_filepath = os.path.join(dirpath, filename)
                     # Extract in the same directory as the zip file
-                    extract_to_dir: str = dirpath
+                    extract_to_dir = dirpath
 
-                    status_msg: str = f"Found: {os.path.relpath(zip_filepath, folder_path)}"
+                    status_msg = f"Found: {os.path.relpath(zip_filepath, folder_path)}"
                     if status_callback: status_callback(status_msg)
                     else: print(status_msg)
 
@@ -74,7 +73,7 @@ def unzip_recursive(folder_path: str, status_callback: Optional[Callable[[str], 
             # Process events if called from GUI thread often (better to use worker thread)
             # QApplication.processEvents() # Only if running in main thread, not ideal
     except Exception as walk_err:
-         error_msg: str = f"Error during directory walk: {walk_err}"
+         error_msg = f"Error during directory walk: {walk_err}"
          if status_callback: status_callback(error_msg)
          else: print(error_msg)
          error_count += 1 # Count this as an error
@@ -104,7 +103,7 @@ if __name__ == "__main__":
         help="The path to the folder containing .zip files."
     )
     args = parser.parse_args()
-    target_directory: str = os.path.abspath(args.folder)
+    target_directory = os.path.abspath(args.folder)
     # Run with console printing
     unzip_recursive(target_directory)
 

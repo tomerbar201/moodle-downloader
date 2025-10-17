@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/tomerbar201/moodle-downloader",
-    packages=find_packages(),
+    packages=find_packages(include=['src', 'src.*']),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -25,7 +25,8 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "moodledown=main:main",
+            "moodledown-gui=run_gui:main",
+            "moodledown-cli=run_cli:main",
         ],
     },
 )

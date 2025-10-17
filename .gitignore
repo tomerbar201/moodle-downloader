@@ -23,8 +23,6 @@ build/
 dist/
 *.egg-info/
 *.manifest
-#! Allow PyInstaller spec to track build config
-*.spec
 *.pkg
 *.toc
 warn-*.txt

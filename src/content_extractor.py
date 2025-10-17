@@ -1,62 +1,24 @@
-"""
-Parses HTML content from Moodle course pages to extract downloadable resources.
-"""
-
 import re
 import logging
 import os
-from typing import Dict, List, Set, Optional, Any
+from typing import Dict, List, Set
 from bs4 import BeautifulSoup
-from bs4.element import Tag
 from urllib.parse import urlparse, urljoin
 
 
 class ContentExtractor:
-    """
-    Extracts and processes content from Moodle pages.
+    """Extracts and processes content from Moodle pages"""
 
-    This class is responsible for parsing the HTML of a Moodle course page to
-    identify and extract meaningful information, such as course sections and
-    downloadable resources. It uses BeautifulSoup to navigate the HTML structure
-    and regular expressions to clean up extracted data.
+    def __init__(self, base_url: str):
+        self.logger = logging.getLogger("MoodleDownPlaywright")
+        self.base_url = base_url
 
-    Attributes:
-        logger (logging.Logger): A logger instance for logging messages.
-        base_url (str): The base URL of the Moodle instance, used to resolve
-                        relative URLs.
-    """
-
-    def __init__(self, base_url: str) -> None:
-        """
-        Initializes the ContentExtractor with the Moodle base URL.
-
-        Args:
-            base_url (str): The base URL of the Moodle instance (e.g.,
-                            'https://moodle.example.com').
-        """
-        self.logger: logging.Logger = logging.getLogger("MoodleDownPlaywright")
-        self.base_url: str = base_url
-
-    def extract_course_sections(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
-        """
-        Extracts course sections or topics from the parsed HTML of a course page.
-
-        Moodle pages are typically divided into sections (e.g., by week or topic).
-        This method attempts to identify these sections using common HTML structures
-        and class names.
-
-        Args:
-            soup (BeautifulSoup): The parsed HTML of the course page.
-
-        Returns:
-            List[Dict[str, Any]]: A list of dictionaries, where each dictionary
-                                  represents a section and contains its ID, name,
-                                  index, and the BeautifulSoup element.
-        """
-        sections: List[Dict[str, Any]] = []
+    def extract_course_sections(self, soup: BeautifulSoup) -> List[Dict]:
+        """Extract course sections/categories from the Moodle page"""
+        sections = []
         try:
             # Try various selectors for section elements
-            section_elements: List[Tag] = soup.find_all(['li', 'div'], class_=lambda c: c and (
+            section_elements = soup.find_all(['li', 'div'], class_=lambda c: c and (
                         'section' in c.split() or 'topic' in c.split() or 'week' in c.split()) and 'main' in c.split())
             if not section_elements:
                 section_elements = soup.select('div.course-content > ul > li.section')
@@ -64,11 +26,11 @@ class ContentExtractor:
                 section_elements = soup.select('div#region-main .section')
 
             for section_idx, section_elem in enumerate(section_elements):
-                section_name: Optional[str] = None
-                section_id: str = section_elem.get('id', f'section-{section_idx}')
+                section_name = None
+                section_id = section_elem.get('id', f'section-{section_idx}')
 
                 # Try to find section name
-                name_candidates: List[Tag] = section_elem.select(
+                name_candidates = section_elem.select(
                     'h3.sectionname, h4.sectionname, .section-title span.inplaceeditable')
                 if name_candidates:
                     section_name = name_candidates[0].get_text(strip=True)
@@ -78,7 +40,7 @@ class ContentExtractor:
                 # Default/General section handling
                 if not section_name:
                     if section_idx == 0:
-                        general_keywords: List[str] = ['כללי', 'general']
+                        general_keywords = ['כללי', 'general']
                         section_summary = section_elem.find(class_='summarytext')
                         is_general = section_summary and any(
                             kw in section_summary.get_text(strip=True).lower() for kw in general_keywords)
@@ -102,30 +64,13 @@ class ContentExtractor:
 
         return sections
 
-    def extract_section_resources(self, section_elem: Tag, section_name: str, current_url: str) -> List[Dict[str, str]]:
-        """
-        Extracts downloadable resources from a single course section.
-
-        This method scans a section's HTML for links to activities and resources,
-        such as files, folders, and assignments, and filters for those that are
-        downloadable.
-
-        Args:
-            section_elem (Tag): The BeautifulSoup element for the course section.
-            section_name (str): The name of the section, used for organization.
-            current_url (str): The URL of the page being parsed, for resolving
-                               relative links.
-
-        Returns:
-            List[Dict[str, str]]: A list of dictionaries, each representing a
-                                  downloadable resource with its name, URL,
-                                  section, and type.
-        """
-        resources: List[Dict[str, str]] = []
-        activities: List[Tag] = section_elem.find_all(['li', 'div'], class_=lambda c: c and 'activity' in c.split())
+    def extract_section_resources(self, section_elem, section_name: str, current_url: str) -> List[Dict]:
+        """Extract downloadable resources from a course section"""
+        resources = []
+        activities = section_elem.find_all(['li', 'div'], class_=lambda c: c and 'activity' in c.split())
 
         for activity in activities:
-            link: Optional[Tag] = activity.find('a', href=True)
+            link = activity.find('a', href=True)
             if not link:
                 continue
 
@@ -133,12 +78,12 @@ class ContentExtractor:
             if not url.startswith('http'):
                 url = urljoin(current_url, url)
 
-            resource_type: str = self._detect_resource_type(link, url)
+            resource_type = self._detect_resource_type(link, url)
             if resource_type in ['ignore', 'unknown', 'assignment', 'quiz', 'forum', 'url', 'feedback', 'choice',
                                  'questionnaire', 'hvp']:
                 continue
 
-            instance_name: str = ""
+            instance_name = ""
             instance_element = link.find('span', class_='instancename')
             if instance_element:
                 instance_name = instance_element.get_text(strip=True)
@@ -164,23 +109,9 @@ class ContentExtractor:
 
         return resources
 
-    def _detect_resource_type(self, link_elem: Tag, url: str) -> str:
-        """
-        Detects the type of a resource based on its link element and URL.
-
-        This helper method uses various clues—such as URL patterns, CSS classes,
-        and icon images—to determine if a link points to a file, folder, or
-        another type of resource that should be ignored.
-
-        Args:
-            link_elem (Tag): The <a> tag element of the resource.
-            url (str): The URL of the resource.
-
-        Returns:
-            str: A string representing the detected resource type (e.g., 'folder',
-                 'pdf', 'document', 'ignore').
-        """
-        href: str = url.lower()
+    def _detect_resource_type(self, link_elem, url):
+        """Detect resource type from link element and URL"""
+        href = url.lower()
 
         # Check URL patterns
         if 'folder/view.php' in href or '/folder/' in href:
@@ -195,7 +126,7 @@ class ContentExtractor:
             return 'url'  # External link
 
         # Check parent element classes
-        activity_instance: Optional[Tag] = link_elem.find_parent(class_=lambda c: c and 'activityinstance' in c)
+        activity_instance = link_elem.find_parent(class_=lambda c: c and 'activityinstance' in c)
         if activity_instance:
             parent_classes = activity_instance.get('class', [])
             for pc in parent_classes:
@@ -208,7 +139,7 @@ class ContentExtractor:
                     return 'ignore'
 
         # Check icon for clues
-        img: Optional[Tag] = link_elem.find('img', class_='activityicon')
+        img = link_elem.find('img', class_='activityicon')
         if img and 'src' in img.attrs:
             doc_type = self._detect_doc_type_from_icon(img['src'].lower())
             if doc_type:
@@ -219,7 +150,7 @@ class ContentExtractor:
         if parsed_path:
             _, ext = os.path.splitext(parsed_path)
             if ext and len(ext) > 1:
-                ext_lower: str = ext.lower()[1:]
+                ext_lower = ext.lower()[1:]
                 common_exts = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'zip', 'rar', '7z', 'txt', 'csv',
                                'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mp3', 'mov']
                 if ext_lower in common_exts:
@@ -230,21 +161,8 @@ class ContentExtractor:
 
         return 'unknown'  # Default if unsure
 
-    def _detect_doc_type_from_icon(self, icon_src: str) -> Optional[str]:
-        """
-        Identifies the document type based on the resource's icon image URL.
-
-        Moodle often uses specific icons for different file types (e.g., a PDF
-        icon for PDF files). This method checks the icon's source URL for patterns
-        that indicate the file type.
-
-        Args:
-            icon_src (str): The 'src' attribute of the icon's <img> tag.
-
-        Returns:
-            Optional[str]: The detected document type (e.g., 'pdf', 'folder') or
-                           None if no specific type could be determined.
-        """
+    def _detect_doc_type_from_icon(self, icon_src):
+        """Identify document type based on icon URL"""
         if not icon_src:
             return None
 
@@ -267,7 +185,7 @@ class ContentExtractor:
             return 'url'
 
         # Fallback patterns
-        icon_patterns: Dict[str, str] = {
+        icon_patterns = {
             '/pdf': 'pdf',
             '/document': 'document',
             '/word': 'word',
@@ -285,27 +203,9 @@ class ContentExtractor:
 
         return None
 
-    def get_download_links(self, html_content: str, current_url: str, logged_urls: Set[str]) -> Dict[str, Dict[str, str]]:
-        """
-        Extracts all downloadable links from the HTML content of a course page.
-
-        This is the main public method for this class. It orchestrates the process
-        of parsing the HTML, extracting sections, finding resources within those
-        sections, and filtering out any resources that have already been
-        downloaded (based on the provided set of logged URLs).
-
-        Args:
-            html_content (str): The raw HTML content of the course page.
-            current_url (str): The URL of the page, for resolving relative links.
-            logged_urls (Set[str]): A set of URLs that have already been
-                                    processed or downloaded, to avoid duplicates.
-
-        Returns:
-            Dict[str, Dict[str, str]]: A dictionary of resources to download, where
-                                       keys are the resource URLs and values are
-                                       dictionaries of resource metadata.
-        """
-        to_download: Dict[str, Dict[str, str]] = {}
+    def get_download_links(self, html_content: str, current_url: str, logged_urls: Set[str]) -> Dict[str, Dict]:
+        """Extract downloadable links from page and filter against already downloaded URLs"""
+        to_download = {}
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
             sections = self.extract_course_sections(soup)
@@ -315,7 +215,7 @@ class ContentExtractor:
                 return {}
 
             for section in sections:
-                section_resources: List[Dict[str, str]] = self.extract_section_resources(section['element'], section['name'], current_url)
+                section_resources = self.extract_section_resources(section['element'], section['name'], current_url)
                 for resource in section_resources:
                     url = resource['url']
                     if url not in to_download:
@@ -325,8 +225,8 @@ class ContentExtractor:
 
             # Filter out already downloaded items
             initial_count = len(to_download)
-            filtered_downloads: Dict[str, Dict[str, str]] = {url: item for url, item in to_download.items() if url not in logged_urls}
-            filtered_count: int = initial_count - len(filtered_downloads)
+            filtered_downloads = {url: item for url, item in to_download.items() if url not in logged_urls}
+            filtered_count = initial_count - len(filtered_downloads)
 
             if filtered_count > 0:
                 self.logger.info(f"Filtered out {filtered_count} items found in the verified central log.")
