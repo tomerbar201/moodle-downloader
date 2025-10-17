@@ -19,6 +19,7 @@ sample_html = html_data = """
                                     <div class="row">
                                         <div class="col-md-9 d-flex flex-column">
                                             <a href="https://moodle.huji.ac.il/2024-25/course/view.php?id=2098" class="aalink coursename">
+                                                <span class="sr-only">Course is starred</span>
                                                 עקרונות ויישומים בניתוח סטטיסטי
                                             </a>
                                         </div>

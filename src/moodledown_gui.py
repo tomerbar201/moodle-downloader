@@ -124,8 +124,8 @@ class AutofillWorker(threading.Thread):
     
     def run(self):
         try:
-            from moodle_browser import MoodleBrowser
-            from course_extractor import extract_courses
+            from .moodle_browser import MoodleBrowser
+            from .course_extractor import extract_courses
             
             # Create browser instance
             self.signals.status.emit("Setting up browser...")
@@ -231,7 +231,7 @@ class BatchDownloadWorker(DownloadWorkerBase):
         successful_courses = 0
         
         try:
-            from moodle_browser import MoodleBrowser
+            from .moodle_browser import MoodleBrowser
             browser = MoodleBrowser(download_folder=self.download_folder, year_range=self.year_range, headless=self.headless)
             browser.setup_browser()
             

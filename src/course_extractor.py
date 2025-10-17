@@ -35,9 +35,35 @@ def extract_courses(html_content: str) -> list[dict]:
             
             # 4. Extract the name and href if the tag is found
             if link_tag and link_tag.has_attr('href'):
-                course_name = link_tag.get_text(strip=True)
+                # Remove hidden accessibility helpers that leak into the visible label
+                hidden_classnames = {'sr-only', 'visually-hidden', 'accesshide'}
+
+                def has_hidden_class(class_attr: str | list[str] | None) -> bool:
+                    if not class_attr:
+                        return False
+                    if isinstance(class_attr, (list, tuple, set)):
+                        return bool(hidden_classnames.intersection(class_attr))
+                    return class_attr in hidden_classnames
+
+                for hidden_node in link_tag.find_all(class_=has_hidden_class):
+                    hidden_node.decompose()
+
+                course_name = link_tag.get_text(separator=' ', strip=True)
+
+                # Guard against prefixed star-status text that some Moodle themes inject
+                status_prefixes = (
+                    'Course is starred',
+                    'Course is not starred',
+                    'Course not starred',
+                    'Course starred',
+                )
+                for prefix in status_prefixes:
+                    if course_name.startswith(prefix):
+                        course_name = course_name[len(prefix):].strip()
+                        break
+
                 course_href = link_tag['href']
-                
+
                 course_list.append({
                     'name': course_name,
                     'href': course_href
