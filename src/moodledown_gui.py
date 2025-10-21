@@ -209,7 +209,9 @@ class DownloadWorkerBase(threading.Thread):
             headless=self.headless,
             organize_by_section=self.organize_by_section,
             course_name=course_name,
-            year_range=self.year_range
+            year_range=self.year_range,
+            existing_browser=shared_browser,
+            assume_logged_in=shared_browser is not None
         )
 
 # --- Single Course Download Worker ---

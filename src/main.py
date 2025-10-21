@@ -19,10 +19,19 @@ def download_course(course_url: str,
                     headless: bool = True,
                     organize_by_section: bool = True,
                     course_name: Optional[str] = None,
-                    year_range: str = "2024-25") -> bool:
-    """Main function to download course content from Moodle"""
+                    year_range: str = "2024-25",
+                    existing_browser: Optional[MoodleBrowser] = None,
+                    assume_logged_in: bool = False) -> bool:
+    """Main function to download course content from Moodle.
 
-    browser = None
+    When ``existing_browser`` is provided, the function reuses the supplied
+    Playwright session instead of launching a new browser. Set
+    ``assume_logged_in`` to ``True`` if the shared browser already completed
+    authentication.
+    """
+
+    browser = existing_browser
+    created_browser = False
     overall_success = False
     logger, log_file_path, central_download_log_file = setup_logging()
 
@@ -31,11 +40,14 @@ def download_course(course_url: str,
         if progress_callback:
             progress_callback(message, max(0.0, min(100.0, percentage)))
 
-    chromium_ok, chromium_message = ensure_chromium_once()
-    if not chromium_ok:
-        update_progress("Chromium setup failed", 100)
-        logger.error(f"Chromium unavailable: {chromium_message}")
-        return False
+    if browser is None:
+        chromium_ok, chromium_message = ensure_chromium_once()
+        if not chromium_ok:
+            update_progress("Chromium setup failed", 100)
+            logger.error(f"Chromium unavailable: {chromium_message}")
+            return False
+    else:
+        logger.info("Reusing existing MoodleBrowser instance for course download.")
 
     try:
         # Step 1: Initialize
@@ -53,15 +65,24 @@ def download_course(course_url: str,
             logger.error(f"Could not create/access central download log: {e}. Proceeding without URL filtering.")
 
         # Step 3: Set up browser
-        browser = MoodleBrowser(course_folder, headless, year_range)
-        browser.setup_browser()
+        if browser is None:
+            browser = MoodleBrowser(course_folder, headless, year_range)
+            browser.setup_browser()
+            created_browser = True
+        else:
+            browser.download_folder = course_folder
+            browser.year_range = year_range
+            browser.BASE_URL = f"https://moodle.huji.ac.il/{year_range}"
 
         # Step 4: Perform login
-        update_progress("Logging in...", 5)
-        if not browser.login(username, password):
-            update_progress("Login failed", 100)
-            logger.error("Moodle login failed.")
-            return False
+        if assume_logged_in:
+            update_progress("Reusing existing session...", 5)
+        else:
+            update_progress("Logging in...", 5)
+            if not browser.login(username, password):
+                update_progress("Login failed", 100)
+                logger.error("Moodle login failed.")
+                return False
 
         # Step 5: Navigate to the course
         update_progress("Navigating to course...", 15)
@@ -123,7 +144,7 @@ def download_course(course_url: str,
         update_progress("Interrupted by user", 100)
         overall_success = False
     finally:
-        if browser:
+        if created_browser and browser:
             browser.close()
 
     return overall_success
