@@ -69,12 +69,12 @@ class MoodleBrowser:
             import time
 
             # Random delay before navigating to login page (1-3 seconds)
-            time.sleep(random.uniform(1.1, 1.4))
+            time.sleep(random.uniform(0.2, 0.35))
             self.logger.info(f"Navigating to login page: {login_url}")
             self.page.goto(login_url)
 
             # Wait for a random time as a human would do while the page loads
-            time.sleep(random.uniform(1.1, 1.5))
+            time.sleep(random.uniform(0.21, 0.32))
 
             # Click email login tab with human-like delay and randomized timing
             self.logger.info("Attempting to click email login tab")

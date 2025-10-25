@@ -58,5 +58,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=os.path.join(current_dir, 'MoodleIcon.ico'),
+    icon='MoodleIcon.ico',
 )

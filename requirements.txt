@@ -5,3 +5,4 @@ beautifulsoup4~=4.13.3
 lxml
 bs4~=0.0.2
 PySimpleGUI~=5.0.8.3
+qdarkstyle

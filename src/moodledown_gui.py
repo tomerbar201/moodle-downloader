@@ -192,7 +192,7 @@ class DownloadWorkerBase(threading.Thread):
         self.headless = self.settings.value("headless", True, bool)
         self.organize_by_section = True  # Always True
         self.full_download = self.settings.value("full_download", False, bool)
-        self.year_range = self.settings.value("year_range", "2024-25")
+        self.year_range = self.settings.value("year_range", "2025-26")
     
     def _download_single_course(self, course_url: str, course_name: str, progress_callback: Callable[[str, float], None], shared_browser=None) -> bool:
         if not is_valid_course_url(course_url):
@@ -406,7 +406,7 @@ class MoodleDownloaderApp(QMainWindow):
         self.full_download_cb = QCheckBox("Full download")
         self.full_download_cb.setChecked(self.settings.value("full_download", False, bool))
         self.unzip_after_cb = QCheckBox("Unzip newly downloaded .zip files after completion")  # New option
-        self.unzip_after_cb.setChecked(self.settings.value("unzip_after", False, bool))
+        self.unzip_after_cb.setChecked(self.settings.value("unzip_after", True, bool))
         self.unzip_after_cb.setEnabled(UNZIPPER_AVAILABLE)
         left_layout.addWidget(self.headless_cb)
         left_layout.addWidget(self.organize_cb)
@@ -423,7 +423,7 @@ class MoodleDownloaderApp(QMainWindow):
         right_layout.addWidget(QLabel("Academic Year:"))
         self.year_combo = QComboBox()
         self.year_combo.addItems(["2023-24", "2024-25", "2025-26", "2026-27"])
-        self.year_combo.setCurrentText(self.settings.value("year_range", "2024-25"))
+        self.year_combo.setCurrentText(self.settings.value("year_range", "2025-26"))
         right_layout.addWidget(self.year_combo)
         
         # Search above course list
