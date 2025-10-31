@@ -35,9 +35,10 @@ def setup_logging():
 
 
 def sanitize_folder_name(folder_name: str) -> str:
-    """Clean folder name by removing invalid characters"""
-    sanitized = re.sub(r'[<>:"/\\|?*]', '_', folder_name).strip().strip('.')
-    sanitized = re.sub(r'\s+', '_', sanitized)
+    """Clean folder name by removing invalid characters while keeping spaces"""
+    sanitized = re.sub(r'[<>:"/\\|?*]', ' ', folder_name)
+    sanitized = sanitized.replace('_', ' ')
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip().strip('.')
     return sanitized if sanitized else "Section"
 
 
