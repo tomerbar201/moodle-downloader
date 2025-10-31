@@ -79,7 +79,7 @@ class ContentExtractor:
                 url = urljoin(current_url, url)
 
             resource_type = self._detect_resource_type(link, url)
-            if resource_type in ['ignore', 'unknown', 'assignment', 'quiz', 'forum', 'url', 'feedback', 'choice',
+            if resource_type in ['ignore', 'unknown', 'quiz', 'forum', 'url', 'feedback', 'choice',
                                  'questionnaire', 'hvp']:
                 continue
 
@@ -117,7 +117,7 @@ class ContentExtractor:
         if 'folder/view.php' in href or '/folder/' in href:
             return 'folder'
         if 'assign/view.php' in href:
-            return 'assignment'  # Ignore
+            return 'assignment'  # Changed: now we process these
         if 'quiz/view.php' in href:
             return 'quiz'  # Ignore
         if 'forum/view.php' in href:
@@ -132,9 +132,11 @@ class ContentExtractor:
             for pc in parent_classes:
                 if pc == 'modtype_folder':
                     return 'folder'
+                if pc == 'modtype_assign':
+                    return 'assignment'  # Changed: now we process these
                 if pc == 'modtype_url':
                     return 'url'
-                if pc in ['modtype_assign', 'modtype_quiz', 'modtype_forum', 'modtype_feedback', 'modtype_choice',
+                if pc in ['modtype_quiz', 'modtype_forum', 'modtype_feedback', 'modtype_choice',
                           'modtype_questionnaire', 'modtype_hvp']:
                     return 'ignore'
 

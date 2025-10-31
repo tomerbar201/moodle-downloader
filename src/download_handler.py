@@ -177,12 +177,103 @@ class DownloadHandler:
 
         return filename, ext
 
+    def _extract_assignment_files(self, assignment_url: str) -> List[Dict]:
+        """Extract intro attachments (pluginfile links) from an assignment page."""
+        self.logger.info(f"Scanning assignment page for attachments: {assignment_url}")
+
+        if not self.api_request_context:
+            self.logger.warning("APIRequestContext unavailable; cannot inspect assignment attachments.")
+            return []
+
+        try:
+            response = self.api_request_context.get(
+                assignment_url,
+                headers=self.moodle_browser.headers,
+                timeout=30000
+            )
+            if not response.ok:
+                self.logger.warning(f"Assignment page fetch failed ({response.status}).")
+                return []
+
+            soup = BeautifulSoup(response.text(), 'html.parser')
+            attachment_links = []
+            seen_urls: Set[str] = set()
+
+            for anchor in soup.select('a[href*="pluginfile.php"]'):
+                href = anchor['href']
+                if '/mod_assign/intro' not in href and '/mod_assign/introattachment' not in href:
+                    continue
+
+                absolute_url = urljoin(response.url, href)
+                if absolute_url in seen_urls:
+                    continue
+                seen_urls.add(absolute_url)
+
+                display_name = anchor.get_text(strip=True)
+                if not display_name:
+                    img = anchor.find('img', alt=True)
+                    if img and img.get('alt'):
+                        display_name = img['alt'].strip()
+                if not display_name:
+                    sibling_img = anchor.find_previous('img', alt=True)
+                    if sibling_img and sibling_img.get('alt'):
+                        display_name = sibling_img['alt'].strip()
+                if not display_name:
+                    display_name = "assignment_file"
+
+                attachment_links.append({
+                    'url': absolute_url,
+                    'name': display_name
+                })
+                self.logger.info(f"Queued assignment attachment: {display_name} -> {absolute_url}")
+
+            self.logger.info(f"Found {len(attachment_links)} intro attachment(s) in assignment page.")
+            return attachment_links
+
+        except Exception as exc:
+            self.logger.error(f"Error while extracting assignment attachments: {exc}")
+            return []
+
     def download_file(self, item_info: Dict, target_filepath_base: str) -> DownloadResult:
         """Download a single file and update central log on success"""
         initial_url = item_info['url']
         suggested_name = item_info['name']
         resource_type = item_info['type']
         current_url_to_fetch = initial_url
+
+        # Handle assignment pages - extract pluginfile URLs first
+        if resource_type == 'assignment' and 'assign/view.php' in current_url_to_fetch:
+            assignment_files = self._extract_assignment_files(current_url_to_fetch)
+
+            if not assignment_files:
+                self.logger.info(f"No intro attachments found in assignment: {suggested_name}")
+                return DownloadResult(True, "No intro attachments in assignment", skipped=True)
+
+            # Download all attached files from this assignment
+            successes, failures = 0, 0
+            for idx, file_info in enumerate(assignment_files):
+                derived_name = file_info['name']
+                if len(assignment_files) > 1:
+                    derived_name = f"{suggested_name}_{idx+1:02d}_{derived_name}"
+                file_item = {
+                    'url': file_info['url'],
+                    'name': derived_name,
+                    'type': 'document',
+                    'section': item_info.get('section', '')
+                }
+
+                # Recursive call to download the actual file
+                file_result = self.download_file(file_item, target_filepath_base)
+                if file_result.success:
+                    successes += 1
+                else:
+                    failures += 1
+
+            if successes > 0 and failures == 0:
+                return DownloadResult(True, f"Downloaded {successes} assignment attachment(s)", skipped=True)
+            if successes > 0:
+                return DownloadResult(True, f"Downloaded {successes} assignment attachment(s), {failures} failed", skipped=True)
+            return DownloadResult(False, "Failed to download assignment attachments")
 
         # Adjust URL for folder downloads
         if resource_type == 'folder' and 'view.php' in current_url_to_fetch and '?id=' in current_url_to_fetch:
