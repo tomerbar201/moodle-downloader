@@ -21,7 +21,8 @@ def download_course(course_url: str,
                     course_name: Optional[str] = None,
                     year_range: str = "2024-25",
                     existing_browser: Optional[MoodleBrowser] = None,
-                    assume_logged_in: bool = False) -> bool:
+                    assume_logged_in: bool = False,
+                    full_download: bool = False) -> bool:
     """Main function to download course content from Moodle.
 
     When ``existing_browser`` is provided, the function reuses the supplied
@@ -63,6 +64,15 @@ def download_course(course_url: str,
             logger.info(f"Central download log file is accessible: {central_download_log_file}")
         except IOError as e:
             logger.error(f"Could not create/access central download log: {e}. Proceeding without URL filtering.")
+
+        # Step 2.5: Handle full download (clear history for this course)
+        if full_download:
+            logger.info(f"Full download requested. Clearing history for course folder: {course_folder}")
+            removed = DownloadHandler.remove_course_history(central_download_log_file, course_folder)
+            if removed > 0:
+                logger.info(f"Removed {removed} entries from history for a fresh download.")
+            else:
+                logger.info("No matching history found to remove.")
 
         # Step 3: Set up browser
         if browser is None:

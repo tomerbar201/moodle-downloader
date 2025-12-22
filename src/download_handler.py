@@ -82,6 +82,51 @@ class DownloadHandler:
 
         return logged_urls
 
+    @staticmethod
+    def remove_course_history(central_log_file: str, course_folder_path: str) -> int:
+        """
+        Remove entries from the central log file that belong to the specified course folder.
+        Returns the number of removed entries.
+        """
+        if not os.path.exists(central_log_file):
+            return 0
+
+        # Normalize path for comparison
+        target_path_abs = os.path.abspath(course_folder_path)
+        
+        # Ensure we have a trailing slash to avoid partial matches on similar folder names
+        if not target_path_abs.endswith(os.sep):
+             target_path_abs += os.sep
+
+        remaining_lines = []
+        removed_count = 0
+        
+        try:
+            with open(central_log_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    parts = line.strip().split(DownloadHandler.LOG_SEPARATOR, 1)
+                    if len(parts) == 2:
+                        filepath = parts[1].strip()
+                        filepath_abs = os.path.abspath(filepath)
+                        
+                        # Check if file is inside the course folder
+                        if filepath_abs.startswith(target_path_abs):
+                            removed_count += 1
+                            continue
+                    
+                    remaining_lines.append(line)
+            
+            if removed_count > 0:
+                with open(central_log_file, 'w', encoding='utf-8') as f:
+                    f.writelines(remaining_lines)
+                    
+            return removed_count
+            
+        except Exception as e:
+            logging.getLogger("MoodleDownPlaywright").error(f"Error removing course history: {e}")
+            return 0
+
+
     def get_logged_urls(self) -> Set[str]:
         """Return the set of already downloaded URLs"""
         return self._logged_urls

@@ -211,7 +211,8 @@ class DownloadWorkerBase(threading.Thread):
             course_name=course_name,
             year_range=self.year_range,
             existing_browser=shared_browser,
-            assume_logged_in=shared_browser is not None
+            assume_logged_in=shared_browser is not None,
+            full_download=self.full_download
         )
 
 # --- Single Course Download Worker ---
@@ -424,6 +425,7 @@ class MoodleDownloaderApp(QMainWindow):
         self.year_combo = QComboBox()
         self.year_combo.addItems(["2023-24", "2024-25", "2025-26", "2026-27"])
         self.year_combo.setCurrentText(self.settings.value("year_range", "2025-26"))
+        self.year_combo.currentTextChanged.connect(self.filter_courses)
         right_layout.addWidget(self.year_combo)
         
         # Search above course list
@@ -501,12 +503,20 @@ class MoodleDownloaderApp(QMainWindow):
             item.setData(Qt.UserRole, course_url)
             item.setToolTip(f"Name: {course_name}\nURL: {course_url}")
             self.course_list.addItem(item)
+        self.filter_courses()
 
     def filter_courses(self):
         search_term = self.search_input.text().lower()
+        selected_year = self.year_combo.currentText()
+        
         for i in range(self.course_list.count()):
             item = self.course_list.item(i)
-            item.setHidden(search_term not in item.text().lower())
+            url = item.data(Qt.UserRole)
+            
+            match_search = search_term in item.text().lower()
+            match_year = selected_year in url if url else False
+            
+            item.setHidden(not (match_search and match_year))
 
     def update_selection(self):
         """Refresh selection-dependent UI state."""
