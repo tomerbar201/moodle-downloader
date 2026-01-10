@@ -12,6 +12,8 @@ block_cipher = None
 
 # Ensure Playwright's bundled driver (node + CLI) ships inside the executable.
 datas = collect_data_files('playwright', includes=['driver/**'])
+datas += collect_data_files('qt_material')
+datas += [('custom.css', '.')]
 
 hiddenimports = [
     'playwright', 'playwright.sync_api',
@@ -20,6 +22,7 @@ hiddenimports = [
     'playwright._impl._errors', 'playwright._impl._helper', 'playwright._impl._api_types',
     'PyQt5', 'PyQt5.QtWidgets', 'PyQt5.QtCore', 'PyQt5.QtGui',
     'bs4', 'lxml', 'keyring', 'keyring.backends', 'keyring.backends.Windows',
+    'qt_material',
 ]
 
 a = Analysis(

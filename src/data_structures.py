@@ -1,10 +1,11 @@
+
 from dataclasses import dataclass
+from typing import Optional
 
 @dataclass
 class DownloadResult:
-    """Stores information about a downloaded file"""
+    """Class to store the result of a download operation"""
     success: bool
     message: str
-    filepath: str = ""
-    filesize: int = 0
-    skipped: bool = False
+    filepath: Optional[str] = None
+    filesize: Optional[int] = 0

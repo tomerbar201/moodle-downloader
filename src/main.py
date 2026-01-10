@@ -181,7 +181,6 @@ if __name__ == "__main__":
         # Determine download path
         folder_name = course_name_input if course_name_input else "moodle_course"
         folder_name = folder_name.replace(r'[<>:"/\\|?*]', '_').strip().strip('. ')
-        folder_name = re.sub(r'[\s_]+', '_', folder_name)
         folder_name = folder_name if folder_name else "moodle_course"
         intended_download_folder_path = os.path.join(base_download_dir, folder_name)
 

@@ -1,0 +1,156 @@
+/* Global Font & base */
+QWidget {
+    font-family: 'Segoe UI', 'Roboto', sans-serif;
+    font-size: 14px;
+}
+
+/* --- Course Cards --- */
+/* The QFrame inside QListWidget items */
+QFrame#CourseCard {
+    background-color: #263238;
+    /* Blue-grey dark */
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Hover state handled in Python or via QListWidget:item:hover */
+
+/* List Widget container */
+QListWidget {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+
+QListWidget::item {
+    margin-bottom: 8px;
+    border-radius: 12px;
+    /* Extra spacing managed by the widget size hint */
+}
+
+QListWidget::item:selected {
+    background-color: transparent;
+    /* Let the custom widget handle the look */
+    border: 2px solid #00bcd4;
+}
+
+QListWidget::item:hover {
+    background-color: transparent;
+}
+
+
+/* --- Buttons --- */
+QPushButton {
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+QPushButton[class="primary"] {
+    background-color: #00bcd4;
+    color: #ffffff;
+    border: none;
+}
+
+QPushButton[class="primary"]:hover {
+    background-color: #00acc1;
+}
+
+QPushButton[class="success"] {
+    background-color: #009688;
+    color: #ffffff;
+    border: none;
+}
+
+QPushButton[class="success"]:hover {
+    background-color: #00897b;
+}
+
+/* --- Search & Inputs --- */
+QLineEdit,
+QComboBox {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #546e7a;
+    background-color: #37474f;
+    color: #eceff1;
+}
+
+QLineEdit:focus,
+QComboBox:focus {
+    border: 1px solid #00bcd4;
+}
+
+/* --- Scrollbars --- */
+QScrollBar:vertical {
+    border: none;
+    background: #263238;
+    width: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #546e7a;
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+/* --- Tree View (Details) --- */
+QTreeView {
+    background-color: #263238;
+    border: 1px solid #37474f;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+QTreeView::item {
+    padding: 6px;
+}
+
+QTreeView::item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+QTreeView::item:selected {
+    background-color: rgba(0, 188, 212, 0.2);
+    border: 1px solid rgba(0, 188, 212, 0.5);
+    color: #ffffff;
+}
+
+QHeaderView::section {
+    background-color: #37474f;
+    padding: 6px;
+    border: none;
+    font-weight: bold;
+    color: #b0bec5;
+}
+
+/* --- Checkboxes --- */
+QCheckBox {
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 2px solid #546e7a;
+}
+
+QCheckBox::indicator:unchecked:hover {
+    border-color: #00bcd4;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #00bcd4;
+    border-color: #00bcd4;
+    image: url(none);
+    /* We don't need an image if we just fill it colorfully, or we rely on font checkmark if possible, but color fill is often enough for modern look */
+}
