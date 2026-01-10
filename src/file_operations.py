@@ -35,29 +35,16 @@ def setup_logging():
 
 
 def sanitize_folder_name(folder_name: str) -> str:
-    """Clean folder name by removing invalid characters"""
-    # Explicitly replace only illegal Windows characters
-    illegal_chars = '<>:"/\\|?*'
-    for char in illegal_chars:
-        folder_name = folder_name.replace(char, '_')
-    
-    # Remove control characters (ASCII 0-31)
-    folder_name = "".join(c for c in folder_name if ord(c) >= 32)
-    
-    return folder_name.strip().strip('.')
+    """Clean folder name by removing invalid characters while keeping spaces"""
+    sanitized = re.sub(r'[<>:"/\\|?*]', ' ', folder_name)
+    sanitized = sanitized.replace('_', ' ')
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip().strip('.')
+    return sanitized if sanitized else "Section"
 
 
 def sanitize_filename(filename: str) -> str:
     """Clean filename by removing invalid characters"""
-    # Explicitly replace only illegal Windows characters
-    illegal_chars = '<>:"/\\|?*'
-    for char in illegal_chars:
-        filename = filename.replace(char, '_')
-        
-    # Remove control characters (ASCII 0-31)
-    filename = "".join(c for c in filename if ord(c) >= 32)
-    
-    sanitized = filename.strip().strip('._ ')
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1F]', '_', filename).strip('._ ')
     return sanitized if sanitized else "file"
 
 

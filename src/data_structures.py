@@ -9,3 +9,4 @@ class DownloadResult:
     message: str
     filepath: Optional[str] = None
     filesize: Optional[int] = 0
+    skipped: Optional[bool] = False
