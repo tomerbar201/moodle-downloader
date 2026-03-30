@@ -5,11 +5,11 @@ import shutil
 from datetime import datetime
 from typing import Optional, Dict
 
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QPushButton, QListWidget, QListWidgetItem, QStackedWidget,
-                             QLineEdit, QComboBox, QProgressBar, QMessageBox, QDialog, 
+                             QLineEdit, QComboBox, QProgressBar, QMessageBox, QDialog,
                              QFormLayout, QCheckBox, QFileDialog, QToolButton, QScrollArea,
-                             QFrame, QAbstractItemView, QFileSystemModel, QTreeView, QSplitter)
+                             QFrame, QAbstractItemView, QFileSystemModel, QTreeView, QSplitter, QSizePolicy)
 from PyQt5.QtCore import Qt, QSettings, QSize, QDir, QUrl, QSortFilterProxyModel, QTimer
 from PyQt5.QtGui import QIcon, QFont, QFontDatabase, QPalette, QColor, QStandardItem
 
@@ -45,6 +45,19 @@ except ImportError:
         UNZIPPER_AVAILABLE = False
 
 
+def get_resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+def get_downloads_folder():
+    """Returns the path to the user's Downloads folder."""
+    return os.path.join(os.path.expanduser('~'), 'Downloads')
+
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, settings=None):
         super().__init__(parent)
@@ -69,7 +82,7 @@ class SettingsDialog(QDialog):
                 if pw: self.password_input.setText(pw)
             except: pass
 
-        self.path_input = QLineEdit(self.settings.value("default_location", os.getcwd()))
+        self.path_input = QLineEdit(self.settings.value("default_location", get_downloads_folder()))
         self.browse_btn = QPushButton("Browse")
         self.browse_btn.clicked.connect(self.browse_path)
         
@@ -87,10 +100,6 @@ class SettingsDialog(QDialog):
         self.unzip_cb.setChecked(self.settings.value("unzip_after", True, bool))
         self.unzip_cb.setEnabled(UNZIPPER_AVAILABLE)
 
-        form_layout.addRow("Username:", self.username_input)
-        form_layout.addRow("Password:", self.password_input)
-        form_layout.addRow("", self.save_password_cb)
-        form_layout.addRow("Download Path:", path_layout)
         # Fix checkbox layout - use checkboxes directly in VBox/Form to ensure they are independent
         # Removing from form layout row and adding to main vertical layout for better control if needed, 
         # but FormLayout rows should verify independent behavior.
@@ -152,6 +161,76 @@ class SettingsDialog(QDialog):
         return self.username_input.text().strip(), self.password_input.text()
 
 
+class DownloadSummaryDialog(QDialog):
+    def __init__(self, summary: dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Download Summary")
+        self.resize(500, 600)
+        
+        layout = QVBoxLayout(self)
+        
+        # Header
+        header = QLabel("Download Complete" if summary.get("success") else "Download Finished with Errors")
+        header.setStyleSheet(f"font-size: 18pt; font-weight: bold; color: {'#4caf50' if summary.get('success') else '#f44336'};")
+        layout.addWidget(header)
+        
+        msg_label = QLabel(summary.get("message", ""))
+        msg_label.setWordWrap(True)
+        layout.addWidget(msg_label)
+
+        # Scroll Area for lists
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        
+        successful = summary.get("successful_downloads", [])
+        if successful:
+            succ_label = QLabel(f"✅ Successful Downloads ({len(successful)}):")
+            succ_label.setStyleSheet("font-weight: bold; color: #4caf50; margin-top: 10px;")
+            scroll_layout.addWidget(succ_label)
+            
+            succ_list = QListWidget()
+            succ_list.addItems(successful)
+            succ_list.setStyleSheet("QListWidget { border: 1px solid #4caf50; border-radius: 5px; background-color: rgba(76, 175, 80, 0.05); }")
+            succ_list.setMaximumHeight(200)
+            scroll_layout.addWidget(succ_list)
+            
+        failed = summary.get("failed_downloads", [])
+        if failed:
+            fail_label = QLabel(f"❌ Failed Downloads/Errors ({len(failed)}):")
+            fail_label.setStyleSheet("font-weight: bold; color: #f44336; margin-top: 10px;")
+            scroll_layout.addWidget(fail_label)
+            
+            fail_list = QListWidget()
+            fail_list.addItems(failed)
+            fail_list.setStyleSheet("QListWidget { border: 1px solid #f44336; border-radius: 5px; background-color: rgba(244, 67, 54, 0.05); }")
+            fail_list.setWordWrap(True)
+            fail_list.setMaximumHeight(200)
+            scroll_layout.addWidget(fail_list)
+            
+        if not successful and not failed:
+            empty_label = QLabel("No new files were downloaded.")
+            empty_label.setStyleSheet("color: #b0bec5; font-style: italic;")
+            scroll_layout.addWidget(empty_label)
+
+        scroll_layout.addStretch()
+        scroll.setWidget(scroll_content)
+        layout.addWidget(scroll)
+        
+        btn_box = QHBoxLayout()
+        btn_box.addStretch()
+        close_btn = QPushButton("Close window")
+        if summary.get("success"):
+            close_btn.setProperty('class', 'success')
+        else:
+            close_btn.setProperty('class', 'danger')
+        close_btn.clicked.connect(self.accept)
+        btn_box.addWidget(close_btn)
+        
+        layout.addLayout(btn_box)
+
+
 class CourseCard(QFrame):
     """Custom widget to display course info in the list with a modern look"""
     def __init__(self, name, url, last_updated=None, parent=None):
@@ -210,6 +289,41 @@ class CourseCard(QFrame):
         layout.setStretch(1, 1) # Text
         layout.setStretch(2, 0) # Stretch
 
+
+class ElidedLabel(QLabel):
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self._full_text = text
+        self.setMinimumWidth(100)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        
+    def setText(self, text):
+        self._full_text = text
+        self.updateElidedText()
+        
+    def setText_safe(self, text):
+        self.setText(text)
+
+    def updateElidedText(self):
+        metrics = self.fontMetrics()
+        elided = metrics.elidedText(self._full_text, Qt.ElideRight, self.width())
+        super().setText(elided)
+        
+        # Add a tooltip so the user can still read the full text
+        if elided != self._full_text:
+            self.setToolTip(self._full_text)
+        else:
+            self.setToolTip("")
+
+    def resizeEvent(self, event):
+        self.updateElidedText()
+        super().resizeEvent(event)
+        
+    def minimumSizeHint(self):
+        return QSize(100, super().minimumSizeHint().height())
+        
+    def sizeHint(self):
+        return QSize(200, super().sizeHint().height())
 
 # Custom Proxy Model to filter out ZIP files and sort by history
 class HistorySortProxyModel(QSortFilterProxyModel):
@@ -345,7 +459,13 @@ class ModernMoodleApp(QMainWindow):
         self.search_input.textChanged.connect(self.filter_courses)
         
         self.year_combo = QComboBox()
-        self.year_combo.addItems(["All Years", "2023-24", "2024-25", "2025-26", "2026-27"])
+        self.year_combo.addItems([
+            "All Years", 
+            "2023-24", "2024-25", "2025-26", "2026-27", 
+            "2027-28", "2028-29", "2029-30", "2030-31", 
+            "2031-32", "2032-33", "2033-34", "2034-35", 
+            "2035-36", "2036-37"
+        ])
         saved_year = self.settings.value("year_range", "2025-26")
         idx = self.year_combo.findText(saved_year)
         if idx >= 0: self.year_combo.setCurrentIndex(idx)
@@ -375,9 +495,8 @@ class ModernMoodleApp(QMainWindow):
         
         # Dashboard Actions
         action_bar = QHBoxLayout()
-        self.status_label = QLabel("Ready")
-        action_bar.addWidget(self.status_label)
-        action_bar.addStretch()
+        self.status_label = ElidedLabel("Ready")
+        action_bar.addWidget(self.status_label, 1)
         
         self.download_selected_btn = QPushButton("Download Selected")
         self.download_selected_btn.setEnabled(False)
@@ -468,7 +587,7 @@ class ModernMoodleApp(QMainWindow):
             
             # Try to find last updated time
             last_updated_str = None
-            base_path = self.settings.value("default_location", os.getcwd())
+            base_path = self.settings.value("default_location", get_downloads_folder())
             
             # Reconstruct folder name logic: name or id fallback
             safe_name = sanitize_folder_name(name)
@@ -536,11 +655,11 @@ class ModernMoodleApp(QMainWindow):
         self.worker = AutofillWorker(
             user, pw, 
             self.year_combo.currentText() if "All" not in self.year_combo.currentText() else "2025-26",
-            self.settings.value("default_location", os.getcwd()),
+            self.settings.value("default_location", get_downloads_folder()),
             self.settings.value("headless", True, bool)
         )
         self.worker.signals.finished.connect(self.on_autofill_finished)
-        self.worker.signals.status.connect(self.status_label.setText)
+        self.worker.signals.status.connect(self.status_label.setText_safe)
         # Use int casting for progress if added later
         self.worker.start()
 
@@ -569,7 +688,7 @@ class ModernMoodleApp(QMainWindow):
         user, pw = self.get_credentials()
         if not user or not pw: return
 
-        path = self.settings.value("default_location", os.getcwd())
+        path = self.settings.value("default_location", get_downloads_folder())
         
         if single_course and self.current_course:
              targets = [self.current_course]
@@ -591,7 +710,7 @@ class ModernMoodleApp(QMainWindow):
             
         self.set_interface_enabled(False)
         self.worker.signals.progress.connect(lambda v: self.progress_bar.setValue(int(v)))
-        self.worker.signals.status.connect(self.status_label.setText)
+        self.worker.signals.status.connect(self.status_label.setText_safe)
         self.worker.signals.finished.connect(self.on_download_finished)
         self.worker.start()
 
@@ -602,11 +721,16 @@ class ModernMoodleApp(QMainWindow):
         if enabled:
             self.update_dashboard_actions() # Re-check selection state
 
-    def on_download_finished(self, success, msg):
+    def on_download_finished(self, success, msg, summary=None):
         self.set_interface_enabled(True)
         self.progress_bar.setVisible(False)
-        QMessageBox.information(self, "Done" if success else "Error", msg)
         self.status_label.setText("Ready")
+        
+        if summary is None:
+            QMessageBox.information(self, "Done" if success else "Error", msg)
+        else:
+            dlg = DownloadSummaryDialog(summary, parent=self)
+            dlg.exec_()
         
         # Reload history to capture new files
         self.load_history()
@@ -640,7 +764,7 @@ class ModernMoodleApp(QMainWindow):
         self.stack.setCurrentIndex(1)
 
     def update_file_tree(self, course_name):
-        base_path = self.settings.value("default_location", os.getcwd())
+        base_path = self.settings.value("default_location", get_downloads_folder())
         # We need to find the folder name. It usually matches the course name but sanitized.
         # But we don't have the sanitizer function exposed easily here without importing 'create_course_folder' logic or 'sanitize_filename'.
         # We can iterate the directory to find a matching folder or just rely on 'create_course_folder' logic.
@@ -704,20 +828,26 @@ def main():
     
     app = QApplication(sys.argv)
     
-    # Import and apply Qt-Material Theme within main to avoid import order warnings
+    # Apply qt-material theme and then layer our custom CSS overrides.
     try:
         from qt_material import apply_stylesheet
         # The 'dark_teal.xml' theme looks premium and modern.
-        # We manually load our custom css to avoid issues with the library's internal loader or pathing
         apply_stylesheet(app, theme='dark_teal.xml')
+
+        # qt-material 2.x does not auto-register the 'icon:' path for PyQt5.
+        # Register it explicitly so SVG assets like icon:/primary/downarrow.svg resolve.
+        qt_material_icons_path = os.path.join(os.path.expanduser('~'), '.qt_material', 'theme')
+        if os.path.isdir(qt_material_icons_path):
+            QDir.addSearchPath('icon', qt_material_icons_path)
         
         # Apply custom CSS on top
-        with open('custom.css', 'r') as f:
+        css_path = get_resource_path('custom.css')
+        with open(css_path, 'r') as f:
             custom_style = f.read()
             app.setStyleSheet(app.styleSheet() + custom_style)
             
     except Exception as e:
-        print(f"Warning: Could not apply qt-material theme: {e}")
+        print(f"Warning: Could not apply themes: {e}")
     
     window = ModernMoodleApp()
     window.show()

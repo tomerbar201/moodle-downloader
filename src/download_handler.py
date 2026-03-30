@@ -50,7 +50,10 @@ class DownloadHandler:
                         url, filepath = parts[0].strip(), parts[1].strip()
                         if url and filepath:
                             # Verify file still exists
-                            if os.path.exists(filepath):
+                            if filepath.startswith("[EMPTY]"):
+                                logged_urls.add(url)
+                                valid_log_entries.append(stripped_line)
+                            elif os.path.exists(filepath):
                                 logged_urls.add(url)
                                 valid_log_entries.append(stripped_line)  # Keep the original valid line
                             else:
@@ -108,6 +111,9 @@ class DownloadHandler:
                     parts = line.strip().split(DownloadHandler.LOG_SEPARATOR, 1)
                     if len(parts) == 2:
                         filepath = parts[1].strip()
+                        if filepath.startswith("[EMPTY]"):
+                            filepath = filepath[7:]
+                        
                         filepath_abs = os.path.abspath(filepath)
                         
                         # Check if file is inside the course folder
@@ -175,19 +181,22 @@ class DownloadHandler:
         """Determine appropriate filename and extension for the downloaded file"""
         filename, ext = None, None
 
-        # Try to get filename from HTTP headers
+        # 1. Try to get extension (and fallback filename) from HTTP headers
         header_filename = self._get_filename_from_headers(response.headers)
+        fallback_filename = None
         if header_filename:
             name_part, ext_part = os.path.splitext(header_filename)
             if ext_part:
-                filename, ext = name_part, ext_part.lower().lstrip('.')
-            else:
-                filename = header_filename
-            self.logger.info(f"Using filename from Content-Disposition: name='{filename}', ext='{ext}'")
+                ext = ext_part.lower().lstrip('.')
+            fallback_filename = name_part if name_part else header_filename
 
-        if not filename:
+        # 2. Prioritize suggested_name from the page
+        if suggested_name:
             filename = suggested_name
             self.logger.info(f"Using suggested name from page: '{filename}'")
+        elif fallback_filename:
+            filename = fallback_filename
+            self.logger.info(f"Fallback to filename from Content-Disposition: '{filename}'")
 
         # Determine extension if not found in header filename
         if not ext:
@@ -293,7 +302,19 @@ class DownloadHandler:
 
             if not assignment_files:
                 self.logger.info(f"No intro attachments found in assignment: {suggested_name}")
-                return DownloadResult(True, "No intro attachments in assignment", skipped=True)
+                
+                # Register [EMPTY] in central log to avoid re-scanning
+                try:
+                    empty_filepath = f"[EMPTY]{target_filepath_base}"
+                    log_entry = f"{initial_url}{self.LOG_SEPARATOR}{empty_filepath}\n"
+                    with open(self.central_download_log_file, 'a', encoding='utf-8') as f_log:
+                        f_log.write(log_entry)
+                    self._logged_urls.add(initial_url)
+                    self.logger.info(f"Added to central log as EMPTY: {initial_url} -> {empty_filepath}")
+                except IOError as e:
+                    self.logger.error(f"Failed to write [EMPTY] to central log: {e}")
+
+                return DownloadResult(True, "No intro attachments in assignment", filepath="[EMPTY]", skipped=True)
 
             # Download all attached files from this assignment
             successes, failures = 0, 0
@@ -530,14 +551,31 @@ class DownloadHandler:
 
             # Download the file
             result = self.download_file(item_info, initial_filepath_suggestion)
-            final_doc_name = os.path.basename(result.filepath) if result.filepath else f"{sanitized_base_name}_FAILED"
+            
             progress_pct_done = processed_count / total_files * 100 if total_files > 0 else 100
+            
+            # Handle empty assignments specifically
+            if result.success and result.filepath == "[EMPTY]":
+                self.logger.info(f"Skipped {processed_count}/{total_files}: '{doc_name}' is an empty assignment box.")
+                if progress_callback:
+                    progress_callback(f"Skipped (Empty): {doc_name}", progress_pct_done)
+                time.sleep(0.8)
+                continue
+
+            # Determine final name for logs/UI
+            if result.filepath:
+                final_doc_name = os.path.basename(result.filepath)
+            elif result.success and result.skipped:
+                # It was a successful assignment with attachments downloaded
+                final_doc_name = f"{sanitized_base_name} (Attachments)"
+            else:
+                final_doc_name = f"{sanitized_base_name}_FAILED"
 
             if result.success:
-                self.logger.info(f"Success {processed_count}/{total_files}: Downloaded '{final_doc_name}'")
+                self.logger.info(f"Success {processed_count}/{total_files}: Processed '{final_doc_name}'")
                 successful.append(final_doc_name)
                 if progress_callback:
-                    progress_callback(f"Downloaded: {final_doc_name}", progress_pct_done)
+                    progress_callback(f"Processed: {final_doc_name}", progress_pct_done)
             else:
                 self.logger.error(f"Failed {processed_count}/{total_files}: '{doc_name}' - Reason: {result.message}")
                 original_url_for_error = item_info.get('url', 'N/A')

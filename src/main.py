@@ -22,7 +22,7 @@ def download_course(course_url: str,
                     year_range: str = "2024-25",
                     existing_browser: Optional[MoodleBrowser] = None,
                     assume_logged_in: bool = False,
-                    full_download: bool = False) -> bool:
+                    full_download: bool = False) -> dict:
     """Main function to download course content from Moodle.
 
     When ``existing_browser`` is provided, the function reuses the supplied
@@ -46,7 +46,7 @@ def download_course(course_url: str,
         if not chromium_ok:
             update_progress("Chromium setup failed", 100)
             logger.error(f"Chromium unavailable: {chromium_message}")
-            return False
+            return {"success": False, "successful_downloads": [], "failed_downloads": [f"Chromium setup failed: {chromium_message}"], "message": chromium_message}
     else:
         logger.info("Reusing existing MoodleBrowser instance for course download.")
 
@@ -92,14 +92,14 @@ def download_course(course_url: str,
             if not browser.login(username, password):
                 update_progress("Login failed", 100)
                 logger.error("Moodle login failed.")
-                return False
+                return {"success": False, "successful_downloads": [], "failed_downloads": ["Login failed. Please check credentials."], "message": "Moodle login failed."}
 
         # Step 5: Navigate to the course
         update_progress("Navigating to course...", 15)
         if not browser.navigate_to_course(course_url):
             update_progress("Course navigation failed", 100)
             logger.error(f"Failed to navigate to course {course_url}.")
-            return False
+            return {"success": False, "successful_downloads": [], "failed_downloads": [f"Failed to navigate to {course_url}"], "message": "Failed to navigate to course."}
 
         # Step 6: Setup content extractor and download handler
         update_progress("Analyzing course content...", 25)
@@ -111,7 +111,7 @@ def download_course(course_url: str,
         if not html_content:
             update_progress("Failed to get page content", 100)
             logger.error("Could not retrieve page content.")
-            return False
+            return {"success": False, "successful_downloads": [], "failed_downloads": ["Could not retrieve page content."], "message": "Failed to get page content."}
 
         # Get links and filter against previously downloaded URLs
         links_to_download = content_extractor.get_download_links(
@@ -123,7 +123,7 @@ def download_course(course_url: str,
         if not links_to_download:
             update_progress("No new downloadable content found.", 100)
             logger.info(f"No new items to download for course {course_url}.")
-            return True  # Success if nothing new needed
+            return {"success": True, "successful_downloads": [], "failed_downloads": [], "message": "No new items required downloading."}  # Success if nothing new needed
 
         # Step 8: Download files
         update_progress(f"Found {len(links_to_download)} new items. Starting download...", 30)
@@ -149,15 +149,26 @@ def download_course(course_url: str,
         logger.exception(f"An error occurred: {e}")
         update_progress(f"Error: {e}", 100)
         overall_success = False
+        msg = f"Unexpected Error: {e}"
+        failed = [f"Exception: {e}"]
+        successful = []
     except KeyboardInterrupt:
         logger.warning("Download process interrupted by user.")
         update_progress("Interrupted by user", 100)
         overall_success = False
+        msg = "Interrupted by user."
+        failed = ["Process interrupted."]
+        successful = []
     finally:
         if created_browser and browser:
             browser.close()
 
-    return overall_success
+    return {
+        "success": overall_success,
+        "successful_downloads": successful if 'successful' in locals() and successful else [],
+        "failed_downloads": failed if 'failed' in locals() and failed else [],
+        "message": msg if 'msg' in locals() else "Unknown status."
+    }
 
 
 # Command Line Interface
@@ -214,7 +225,7 @@ if __name__ == "__main__":
 
 
         # Call the main download function
-        success = download_course(
+        result = download_course(
             course_url=course_url,
             username=username,
             password=password,
@@ -228,12 +239,20 @@ if __name__ == "__main__":
         print()  # Newline after progress bar
 
         # Display final result
-        if success:
+        if result["success"]:
             print(f"\nDownload process completed successfully for this course.")
             print(f"Files saved in/updated: {intended_download_folder_path}")
             print(f"Download history is tracked centrally in: {central_download_log_file}")
+            if result["successful_downloads"]:
+                 print("Successfully downloaded files:")
+                 for f in result["successful_downloads"]: print(f"  - {f}")
         else:
             print("\nDownload process failed or encountered significant errors for this course.")
+            if result["failed_downloads"]:
+                 print("Failed files & reasons:")
+                 for f in result["failed_downloads"]: print(f"  - {f}")
+            if result["message"]:
+                 print(f"Summary: {result['message']}")
 
         print(f"Please check the main log file '{log_file_path}' for details.")
 

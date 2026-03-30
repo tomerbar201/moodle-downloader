@@ -20,7 +20,7 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    success = download_course(
+    result = download_course(
         course_url=args.course_url,
         username=args.username,
         password=args.password,
@@ -31,4 +31,4 @@ if __name__ == '__main__':
         year_range=args.year_range
     )
     
-    sys.exit(0 if success else 1)
+    sys.exit(0 if result["success"] else 1)

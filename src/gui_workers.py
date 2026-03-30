@@ -12,7 +12,7 @@ from .file_operations import create_course_folder
 class WorkerSignals(QObject):
     status = pyqtSignal(str)
     progress = pyqtSignal(float)
-    finished = pyqtSignal(bool, str)
+    finished = pyqtSignal(bool, str, dict)
 
 class AutofillSignals(QObject):
     status = pyqtSignal(str)
@@ -89,10 +89,10 @@ class DownloadWorkerBase(threading.Thread):
         self.full_download = self.settings.value("full_download", False, bool)
         self.year_range = self.settings.value("year_range", "2025-26")
     
-    def _download_single_course(self, course_url: str, course_name: str, progress_callback: Callable[[str, float], None], shared_browser=None) -> bool:
+    def _download_single_course(self, course_url: str, course_name: str, progress_callback: Callable[[str, float], None], shared_browser=None) -> dict:
         if not is_valid_course_url(course_url):
             progress_callback(f"Invalid URL for {course_name}, skipping.", 0)
-            return False
+            return {"success": False, "successful_downloads": [], "failed_downloads": [f"Invalid URL for {course_name}"], "message": "Invalid URL."}
             
         course_folder = create_course_folder(course_url, self.download_folder, course_name)
         return download_course(
@@ -123,12 +123,12 @@ class DownloadWorker(DownloadWorkerBase):
                 self.signals.status.emit(f"{self.course_name}: {message}")
                 self.signals.progress.emit(percent)
             
-            success = self._download_single_course(self.course_url, self.course_name, progress_callback)
-            msg = f"{'Successfully downloaded' if success else 'Failed to complete download for'} {self.course_name}"
-            self.signals.finished.emit(success, msg)
+            result = self._download_single_course(self.course_url, self.course_name, progress_callback)
+            msg = f"{'Successfully downloaded' if result['success'] else 'Failed to complete download for'} {self.course_name}"
+            self.signals.finished.emit(result['success'], msg, result)
         except Exception as e:
             self.signals.status.emit(f"Error: {str(e)}")
-            self.signals.finished.emit(False, f"Error downloading {self.course_name}: {str(e)}")
+            self.signals.finished.emit(False, f"Error downloading {self.course_name}: {str(e)}", {"success": False, "successful_downloads": [], "failed_downloads": [f"Worker error: {e}"], "message": str(e)})
 
 # --- Batch Download Worker ---
 class BatchDownloadWorker(DownloadWorkerBase):
@@ -141,6 +141,13 @@ class BatchDownloadWorker(DownloadWorkerBase):
         total_courses = len(self.courses)
         successful_courses = 0
         
+        overall_summary = {
+            "success": False,
+            "successful_downloads": [],
+            "failed_downloads": [],
+            "message": ""
+        }
+        
         try:
             from .moodle_browser import MoodleBrowser
             browser = MoodleBrowser(download_folder=self.download_folder, year_range=self.year_range, headless=self.headless)
@@ -148,7 +155,9 @@ class BatchDownloadWorker(DownloadWorkerBase):
             
             self.signals.status.emit("Logging in to Moodle...")
             if not browser.login(self.username, self.password):
-                self.signals.finished.emit(False, "Failed to login to Moodle")
+                overall_summary["failed_downloads"].append("Failed to login to Moodle")
+                overall_summary["message"] = "Failed to login to Moodle"
+                self.signals.finished.emit(False, "Failed to login to Moodle", overall_summary)
                 return
                 
             # Iterate (name, url) format from GUI
@@ -162,16 +171,28 @@ class BatchDownloadWorker(DownloadWorkerBase):
                     overall_progress = course_progress_base + (percent / 100) * course_progress_weight
                     self.signals.progress.emit(overall_progress)
                     
-                if self._download_single_course(course_url, course_name, progress_callback, browser):
+                result = self._download_single_course(course_url, course_name, progress_callback, browser)
+                
+                if result.get("success"):
                     successful_courses += 1
+                    
+                # Tag filenames with course name to differentiate
+                for f in result.get("successful_downloads", []):
+                    overall_summary["successful_downloads"].append(f"[{course_name}] {f}")
+                for err in result.get("failed_downloads", []):
+                    overall_summary["failed_downloads"].append(f"[{course_name}] {err}")
 
             self.signals.progress.emit(100)
+            overall_summary["success"] = successful_courses > 0
             if successful_courses == total_courses:
-                self.signals.finished.emit(True, f"Successfully downloaded all {total_courses} courses")
+                overall_summary["message"] = f"Successfully downloaded all {total_courses} courses"
             else:
-                self.signals.finished.emit(successful_courses > 0, f"Downloaded {successful_courses}/{total_courses} courses")
+                overall_summary["message"] = f"Downloaded {successful_courses}/{total_courses} courses"
+                
+            self.signals.finished.emit(overall_summary["success"], overall_summary["message"], overall_summary)
         except Exception as e:
-            self.signals.finished.emit(False, f"Error during batch download: {str(e)}")
+            overall_summary["failed_downloads"].append(f"Batch worker error: {e}")
+            self.signals.finished.emit(False, f"Error during batch download: {str(e)}", overall_summary)
         finally:
             try:
                 browser.close()

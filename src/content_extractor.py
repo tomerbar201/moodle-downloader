@@ -86,6 +86,10 @@ class ContentExtractor:
             instance_name = ""
             instance_element = link.find('span', class_='instancename')
             if instance_element:
+                # Remove nested span elements with class 'accesshide' first
+                for hide_span in instance_element.find_all('span', class_='accesshide'):
+                    hide_span.decompose()
+                
                 instance_name = instance_element.get_text(strip=True)
                 if not instance_name:  # Check nested span
                     nested_span = instance_element.find('span')

@@ -658,7 +658,7 @@ class MoodleDownloaderApp(QMainWindow):
     def update_progress(self, value):
         self.progress_bar.setValue(int(value))
 
-    def download_finished(self, success, message):
+    def download_finished(self, success, message, summary=None):
         self.set_downloading_state(False)
         self.progress_bar.setValue(100 if success else 0)
         self.status_label.setText("Complete" if success else "Failed")

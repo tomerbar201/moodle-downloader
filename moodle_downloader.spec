@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os, sys
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 # __file__ is not guaranteed inside exec() when PyInstaller loads the spec.
 # Use working directory (where the spec resides when invoked) as base.
@@ -13,6 +13,7 @@ block_cipher = None
 # Ensure Playwright's bundled driver (node + CLI) ships inside the executable.
 datas = collect_data_files('playwright', includes=['driver/**'])
 datas += collect_data_files('qt_material')
+datas += copy_metadata('keyring')
 datas += [('custom.css', '.')]
 
 hiddenimports = [
