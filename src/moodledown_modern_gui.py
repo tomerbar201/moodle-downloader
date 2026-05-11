@@ -7,7 +7,7 @@ from typing import Optional, Dict
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QPushButton, QListWidget, QListWidgetItem, QStackedWidget,
-                             QLineEdit, QComboBox, QProgressBar, QMessageBox, QDialog,
+                             QLineEdit, QComboBox, QProgressBar, QMessageBox, QDialog, QDialogButtonBox,
                              QFormLayout, QCheckBox, QFileDialog, QToolButton, QScrollArea,
                              QFrame, QAbstractItemView, QFileSystemModel, QTreeView, QSplitter, QSizePolicy)
 from PyQt5.QtCore import Qt, QSettings, QSize, QDir, QUrl, QSortFilterProxyModel, QTimer
@@ -159,6 +159,39 @@ class SettingsDialog(QDialog):
 
     def get_credentials(self):
         return self.username_input.text().strip(), self.password_input.text()
+
+
+class AddCourseDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Course")
+        layout = QFormLayout(self)
+
+        self.course_name = QLineEdit()
+        self.course_url_input = QLineEdit()
+        self.course_url_input.setPlaceholderText("e.g., https://moodle.../course/view.php?id=12345")
+
+        layout.addRow("Course Name:", self.course_name)
+        layout.addRow("Course URL:", self.course_url_input)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addRow(button_box)
+
+    def accept(self):
+        name = self.course_name.text().strip()
+        url = self.course_url_input.text().strip()
+        if not name or not url:
+            QMessageBox.warning(self, "Input Error", "Both Course Name and Course URL are required.")
+            return
+        if not is_valid_course_url(url):
+            QMessageBox.warning(self, "Input Error", "The URL must be a valid Moodle course URL (should contain '/course/view.php').")
+            return
+        super().accept()
+
+    def get_course_data(self):
+        return self.course_name.text().strip(), self.course_url_input.text().strip()
 
 
 class DownloadSummaryDialog(QDialog):
@@ -472,13 +505,8 @@ class ModernMoodleApp(QMainWindow):
         else: self.year_combo.setCurrentText("2025-26") # Default
         self.year_combo.currentTextChanged.connect(self.filter_courses)
         
-        autofill_btn = QPushButton("Auto-fill from Moodle")
-        autofill_btn.setProperty('class', 'primary')
-        autofill_btn.clicked.connect(self.run_autofill)
-        
         controls.addWidget(self.search_input, 2)
         controls.addWidget(self.year_combo, 1)
-        controls.addWidget(autofill_btn)
         layout.addLayout(controls)
         
         # Course List
@@ -492,6 +520,24 @@ class ModernMoodleApp(QMainWindow):
         
         # Populate list
         self.refresh_course_list()
+
+        # Course management
+        manage_bar = QHBoxLayout()
+        self.add_course_btn = QPushButton("Add Course")
+        self.add_course_btn.clicked.connect(self.add_course)
+        self.add_course_btn.setFixedHeight(32)
+        self.remove_selected_btn = QPushButton("Remove Selected")
+        self.remove_selected_btn.setEnabled(False)
+        self.remove_selected_btn.clicked.connect(self.remove_courses)
+        self.remove_selected_btn.setFixedHeight(32)
+        self.autofill_btn = QPushButton("Auto-fill from Moodle")
+        self.autofill_btn.setProperty('class', 'primary')
+        self.autofill_btn.clicked.connect(self.run_autofill)
+        self.autofill_btn.setFixedHeight(32)
+        manage_bar.addWidget(self.add_course_btn)
+        manage_bar.addWidget(self.remove_selected_btn)
+        manage_bar.addWidget(self.autofill_btn)
+        layout.addLayout(manage_bar)
         
         # Dashboard Actions
         action_bar = QHBoxLayout()
@@ -616,12 +662,48 @@ class ModernMoodleApp(QMainWindow):
     def update_dashboard_actions(self):
         count = len(self.course_list_widget.selectedItems())
         self.download_selected_btn.setEnabled(count > 0)
-        self.download_selected_btn.setText(f"Download ({count})")
+        self.download_selected_btn.setText(f"Download ({count})" if count > 0 else "Download Selected")
+        self.remove_selected_btn.setEnabled(count > 0)
 
     def open_settings(self):
         dlg = SettingsDialog(self, self.settings)
         dlg.exec_()
         # Refresh logic potentially needed if saving impacts UI directly
+
+    def add_course(self):
+        dialog = AddCourseDialog(self)
+        if dialog.exec_():
+            name, url = dialog.get_course_data()
+            if name in self.all_courses:
+                QMessageBox.warning(self, "Duplicate", f"Course '{name}' already exists.")
+                return
+            if url in self.all_courses.values():
+                QMessageBox.warning(self, "Duplicate URL", "That URL is already used by another course.")
+                return
+
+            self.all_courses[name] = url
+            self.save_courses()
+            self.refresh_course_list()
+
+    def remove_courses(self):
+        items = self.course_list_widget.selectedItems()
+        if not items:
+            return
+
+        if QMessageBox.question(self, "Confirm", f"Remove {len(items)} selected course(s)?") != QMessageBox.Yes:
+            return
+
+        for item in items:
+            name, _ = item.data(Qt.UserRole)
+            if name in self.all_courses:
+                del self.all_courses[name]
+
+        self.save_courses()
+        self.refresh_course_list()
+        self.update_dashboard_actions()
+
+    def save_courses(self):
+        self.settings.setValue("courses", list(self.all_courses.items()))
 
     def run_autofill(self):
         # Check credentials
